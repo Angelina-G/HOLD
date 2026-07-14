@@ -1,0 +1,48 @@
+<view class="page">
+  <view class="hero">
+    <view class="hero-tag">BLE DEBUG</view>
+    <view class="hero-title">HOLD 硬件联调台</view>
+    <view class="hero-subtitle">按顺序完成扫描连接、通知订阅、命令写入和云端闭环验证。</view>
+  </view>
+
+  <view class="panel status-panel">
+    <view class="panel-title">连接状态</view>
+    <view class="status-row"><text class="label">适配器</text><text class="value">{{adapterStatus}}</text></view>
+    <view class="status-row"><text class="label">连接</text><text class="value">{{connectionStatus}}</text></view>
+    <view class="status-row"><text class="label">设备</text><text class="value">{{deviceName}}</text></view>
+  </view>
+
+  <view class="actions">
+    <button class="primary" bindtap="handleScanAndConnect" loading="{{scanning}}">扫描连接</button>
+    <button class="secondary" bindtap="disconnectDevice">断开</button>
+  </view>
+
+  <view class="panel">
+    <view class="panel-title">硬件控制</view>
+    <view class="control-grid">
+      <button class="primary" bindtap="toggleBreath" disabled="{{!canSendCommand}}">
+        {{breathRunning ? '停止呼吸反馈' : '开始呼吸反馈'}}
+      </button>
+      <button class="secondary" bindtap="startCalibration" disabled="{{!canSendCommand || calibrationRunning}}">
+        {{calibrationRunning ? '校准中...' : '基础校准'}}
+      </button>
+    </view>
+    <view class="status-row"><text class="label">震动驱动</text><text class="value">{{hapticReady ? 'DRV2605L 就绪' : '未检测到，使用 LED 兜底'}}</text></view>
+    <view class="status-row"><text class="label">呼吸反馈</text><text class="value">{{breathRunning ? '运行中' : '停止'}}</text></view>
+    <view class="status-row"><text class="label">基础校准</text><text class="value">{{calibrationRunning ? '运行中' : '空闲'}}</text></view>
+  </view>
+
+  <view class="panel">
+    <view class="panel-title">最近硬件通知</view>
+    <view class="metric"><text class="metric-value">{{pressCount}}</text><text class="metric-label">累计按钮事件</text></view>
+    <view class="status-row"><text class="label">时间</text><text class="value">{{lastEventTime}}</text></view>
+    <view class="raw-block">{{lastEventRaw}}</view>
+  </view>
+
+  <view class="panel">
+    <view class="panel-title">云端处理结果</view>
+    <view class="status-row"><text class="label">云函数</text><text class="value">{{cloudStatus}}</text></view>
+    <view class="status-row"><text class="label">云存储</text><text class="value">{{storagePath}}</text></view>
+    <view class="status-row"><text class="label">模型回复</text><text class="value multiline">{{llmReply}}</text></view>
+  </view>
+</view>
