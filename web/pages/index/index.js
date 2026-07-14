@@ -2,6 +2,7 @@ const SERVICE_UUID = '19b10010-e8f2-537e-4f6c-d104768a1214';
 const EVENT_CHARACTERISTIC_UUID = '19b10011-e8f2-537e-4f6c-d104768a1214';
 const COMMAND_CHARACTERISTIC_UUID = '19b10013-e8f2-537e-4f6c-d104768a1214';
 const DEVICE_NAME_PREFIX = 'HOLD-LINK-TEST';
+const DEVICE_NAME_PREFIXES = ['HOLD-LINK-TEST', 'HOLD-INTEGRATED'];
 
 function arrayBufferToString(buffer) {
   const bytes = new Uint8Array(buffer);
@@ -19,6 +20,19 @@ function stringToArrayBuffer(text) {
     view[index] = text.charCodeAt(index);
   }
   return buffer;
+}
+
+function getDeviceName(device) {
+  return device.name || device.localName || '';
+}
+
+function isTargetDevice(device) {
+  const name = getDeviceName(device);
+  return DEVICE_NAME_PREFIXES.some((prefix) => name.indexOf(prefix) !== -1);
+}
+
+function errorText(error) {
+  return error.errCode || error.errMsg || 'unknown';
 }
 
 Page({
@@ -44,24 +58,32 @@ Page({
   },
 
   onLoad() {
+    this.connecting = false;
     wx.onBLECharacteristicValueChange((result) => this.handleNotifyMessage(result));
     wx.onBluetoothDeviceFound((result) => {
-      const target = (result.devices || []).find((item) => (
-        item.name || item.localName || ''
-      ).indexOf(DEVICE_NAME_PREFIX) !== -1);
+      if (this.connecting || this.data.deviceId) {
+        return;
+      }
 
+      const target = (result.devices || []).find(isTargetDevice);
       if (!target) {
         return;
       }
 
-      this.stopDiscovery();
+      this.connecting = true;
       this.setData({
-        deviceName: target.name || target.localName || DEVICE_NAME_PREFIX,
+        deviceName: getDeviceName(target) || DEVICE_NAME_PREFIX,
         deviceId: target.deviceId,
         adapterStatus: '已发现目标设备',
         connectionStatus: '正在连接'
       });
-      this.connectDevice(target.deviceId);
+
+      wx.stopBluetoothDevicesDiscovery({
+        complete: () => {
+          this.setData({ scanning: false });
+          setTimeout(() => this.connectDevice(target.deviceId), 300);
+        }
+      });
     });
   },
 
@@ -74,20 +96,48 @@ Page({
   },
 
   handleScanAndConnect() {
+    this.connecting = false;
     this.setData({
-      adapterStatus: '初始化蓝牙中',
+      adapterStatus: '准备蓝牙',
       connectionStatus: '未连接',
-      scanning: true
+      scanning: true,
+      canSendCommand: false
     });
 
+    this.ensureAndroidScanReady(() => this.openAdapterAndScan());
+  },
+
+  ensureAndroidScanReady(next) {
+    const systemInfo = wx.getSystemInfoSync ? wx.getSystemInfoSync() : {};
+    if ((systemInfo.platform || '').toLowerCase() !== 'android') {
+      next();
+      return;
+    }
+
+    wx.authorize({
+      scope: 'scope.userLocation',
+      complete: () => next()
+    });
+  },
+
+  openAdapterAndScan() {
     wx.openBluetoothAdapter({
       success: () => {
-        this.setData({ adapterStatus: '蓝牙已开启，开始扫描' });
-        this.startDiscovery();
+        wx.getBluetoothAdapterState({
+          success: (state) => {
+            if (!state.available) {
+              this.setData({ adapterStatus: '蓝牙不可用，请打开系统蓝牙', scanning: false });
+              return;
+            }
+            this.setData({ adapterStatus: '蓝牙已开启，开始扫描' });
+            this.startDiscovery();
+          },
+          fail: () => this.startDiscovery()
+        });
       },
       fail: (error) => {
         this.setData({
-          adapterStatus: `蓝牙初始化失败: ${error.errCode || error.errMsg}`,
+          adapterStatus: `蓝牙初始化失败: ${errorText(error)}`,
           scanning: false
         });
       }
@@ -96,10 +146,14 @@ Page({
 
   startDiscovery() {
     wx.startBluetoothDevicesDiscovery({
-      allowDuplicatesKey: false,
-      success: () => this.setData({ adapterStatus: '扫描中，等待 HOLD-LINK-TEST...', scanning: true }),
+      allowDuplicatesKey: true,
+      interval: 0,
+      success: () => this.setData({
+        adapterStatus: '扫描中，等待 HOLD-LINK-TEST / HOLD-INTEGRATED',
+        scanning: true
+      }),
       fail: (error) => this.setData({
-        adapterStatus: `扫描失败: ${error.errCode || error.errMsg}`,
+        adapterStatus: `扫描失败: ${errorText(error)}`,
         scanning: false
       })
     });
@@ -120,10 +174,17 @@ Page({
       deviceId,
       timeout: 10000,
       success: () => {
+        this.connecting = false;
         this.setData({ connectionStatus: '已连接，获取服务中' });
         this.fetchServices(deviceId);
       },
-      fail: (error) => this.setData({ connectionStatus: `连接失败: ${error.errCode || error.errMsg}` })
+      fail: (error) => {
+        this.connecting = false;
+        this.setData({
+          canSendCommand: false,
+          connectionStatus: `连接失败: ${errorText(error)}`
+        });
+      }
     });
   },
 
@@ -140,7 +201,7 @@ Page({
         this.setData({ serviceId: service.uuid, connectionStatus: '服务已找到，获取特征中' });
         this.fetchCharacteristics(deviceId, service.uuid);
       },
-      fail: (error) => this.setData({ connectionStatus: `获取服务失败: ${error.errCode || error.errMsg}` })
+      fail: (error) => this.setData({ connectionStatus: `获取服务失败: ${errorText(error)}` })
     });
   },
 
@@ -154,7 +215,7 @@ Page({
         const commandCharacteristic = characteristics.find((item) => item.uuid.toLowerCase() === COMMAND_CHARACTERISTIC_UUID);
 
         if (!eventCharacteristic || !commandCharacteristic) {
-          this.setData({ connectionStatus: '缺少通知或命令特征，请重新烧录最新固件' });
+          this.setData({ connectionStatus: '缺少通知或命令特征，请确认固件版本' });
           return;
         }
 
@@ -165,7 +226,7 @@ Page({
         });
         this.enableNotify(deviceId, serviceId, eventCharacteristic.uuid);
       },
-      fail: (error) => this.setData({ connectionStatus: `获取特征失败: ${error.errCode || error.errMsg}` })
+      fail: (error) => this.setData({ connectionStatus: `获取特征失败: ${errorText(error)}` })
     });
   },
 
@@ -179,7 +240,7 @@ Page({
         connectionStatus: '已订阅硬件通知',
         adapterStatus: '链路已打通，可发送呼吸或校准命令'
       }),
-      fail: (error) => this.setData({ connectionStatus: `订阅失败: ${error.errCode || error.errMsg}` })
+      fail: (error) => this.setData({ connectionStatus: `订阅失败: ${errorText(error)}` })
     });
   },
 
@@ -194,8 +255,8 @@ Page({
       serviceId: this.data.serviceId,
       characteristicId: this.data.commandCharacteristicId,
       value: stringToArrayBuffer(command),
-      success: () => this.setData({ connectionStatus: `已发送: ${command}` }),
-      fail: (error) => this.setData({ connectionStatus: `发送失败: ${error.errCode || error.errMsg}` })
+      success: () => this.setData({ connectionStatus: `已发送 ${command}` }),
+      fail: (error) => this.setData({ connectionStatus: `发送失败: ${errorText(error)}` })
     });
   },
 
@@ -262,6 +323,8 @@ Page({
   },
 
   disconnectDevice() {
+    this.connecting = false;
+    this.stopDiscovery();
     if (!this.data.deviceId) {
       return;
     }

@@ -25,6 +25,12 @@
   align-items: flex-start;
 }
 
+.hero-row > view:first-child,
+.module-header > view:first-child {
+  flex: 1;
+  min-width: 0;
+}
+
 .hero-badge {
   display: inline-block;
   padding: 8rpx 18rpx;
@@ -54,11 +60,14 @@
 .debug-entry {
   height: fit-content;
   flex: 0 0 auto;
+  max-width: 170rpx;
   padding: 14rpx 20rpx;
   border-radius: 999rpx;
   background: rgba(255, 255, 255, 0.72);
   color: #5b4764;
   font-size: 22rpx;
+  line-height: 1.25;
+  text-align: center;
 }
 
 .hero-metrics {
@@ -141,11 +150,14 @@
 
 .module-action {
   flex: 0 0 auto;
+  max-width: 190rpx;
   padding: 12rpx 18rpx;
   border-radius: 999rpx;
   background: linear-gradient(135deg, #f59b88 0%, #b89af6 100%);
   color: #fffaf7;
   font-size: 22rpx;
+  line-height: 1.25;
+  text-align: center;
 }
 
 .summary-strip {
@@ -251,6 +263,10 @@
   border-radius: 18rpx;
   font-size: 28rpx;
   line-height: 1.35;
+  min-height: 88rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .solid-button {

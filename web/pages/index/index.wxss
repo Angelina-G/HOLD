@@ -68,6 +68,7 @@
 }
 
 .label {
+  flex: 0 0 auto;
   color: #81747d;
   font-size: 24rpx;
 }
@@ -103,6 +104,11 @@
   border-radius: 20rpx;
   font-size: 28rpx;
   line-height: 1.35;
+  min-width: 0;
+  min-height: 88rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .primary {
