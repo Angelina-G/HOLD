@@ -1,7 +1,10 @@
 .daily-page {
   min-height: 100vh;
   padding: 28rpx;
-  background: linear-gradient(180deg, #f3eee3 0%, #e8e0ce 100%);
+  background:
+    radial-gradient(circle at 12% 8%, rgba(255, 176, 145, 0.3), transparent 34%),
+    radial-gradient(circle at 88% 12%, rgba(196, 170, 255, 0.26), transparent 36%),
+    linear-gradient(180deg, #fff9f4 0%, #f7f1ff 52%, #fff7ef 100%);
 }
 
 .daily-hero,
@@ -15,7 +18,8 @@
 .chart-panel,
 .stat-card {
   background: rgba(255, 252, 246, 0.95);
-  box-shadow: 0 18rpx 46rpx rgba(50, 52, 35, 0.08);
+  border: 1rpx solid rgba(255, 255, 255, 0.72);
+  box-shadow: 0 18rpx 46rpx rgba(168, 132, 188, 0.12);
 }
 
 .daily-hero {
@@ -25,14 +29,15 @@
 .hero-title {
   font-size: 40rpx;
   font-weight: 700;
-  color: #20372a;
+  color: #332a31;
+  line-height: 1.18;
 }
 
 .hero-subtitle {
   margin-top: 14rpx;
   font-size: 24rpx;
   line-height: 1.7;
-  color: #687166;
+  color: #756a73;
 }
 
 .day-tabs {
@@ -47,28 +52,28 @@
   min-width: 150rpx;
   margin-right: 16rpx;
   padding: 20rpx;
-  background: rgba(255, 249, 240, 0.72);
+  background: rgba(255, 249, 245, 0.78);
 }
 
 .day-tab.active {
-  background: #20372a;
+  background: linear-gradient(135deg, #f59b88 0%, #b89af6 100%);
 }
 
 .day-tab-date {
   font-size: 28rpx;
   font-weight: 700;
-  color: #20372a;
+  color: #332a31;
 }
 
 .day-tab-label {
   margin-top: 8rpx;
   font-size: 20rpx;
-  color: #6b7368;
+  color: #81747d;
 }
 
 .day-tab.active .day-tab-date,
 .day-tab.active .day-tab-label {
-  color: #f7f2e5;
+  color: #fffaf7;
 }
 
 .stats-grid {
@@ -80,24 +85,25 @@
 
 .stat-card {
   padding: 22rpx 18rpx;
+  min-width: 0;
 }
 
 .stat-card.breath {
-  background: #edf5ee;
+  background: #fff0e9;
 }
 
 .stat-card.heart {
-  background: #fff0e7;
+  background: #f3efff;
 }
 
 .stat-card.stable {
-  background: #f3eee2;
+  background: #fff7e9;
 }
 
 .stat-value {
   font-size: 42rpx;
   font-weight: 700;
-  color: #20372a;
+  color: #332a31;
 }
 
 .stat-unit,
@@ -108,13 +114,13 @@
 .stat-unit {
   margin-top: 6rpx;
   font-size: 22rpx;
-  color: #6b7368;
+  color: #81747d;
 }
 
 .stat-label {
   margin-top: 14rpx;
   font-size: 22rpx;
-  color: #586557;
+  color: #756a73;
 }
 
 .chart-panel {
@@ -125,7 +131,7 @@
 .panel-title {
   font-size: 28rpx;
   font-weight: 700;
-  color: #20372a;
+  color: #332a31;
 }
 
 .bars-row {
@@ -149,18 +155,18 @@
 }
 
 .breath-bar {
-  background: linear-gradient(180deg, #5c9b7c 0%, #3f735c 100%);
+  background: linear-gradient(180deg, #f2a59a 0%, #c9a7f5 100%);
 }
 
 .heart-bar {
-  background: linear-gradient(180deg, #e2925d 0%, #c96c44 100%);
+  background: linear-gradient(180deg, #b89af6 0%, #f59b88 100%);
 }
 
 .insight-copy {
   margin-top: 16rpx;
   font-size: 24rpx;
   line-height: 1.8;
-  color: #4f5e4e;
+  color: #5d535b;
 }
 
 .timeline-list {
@@ -177,7 +183,7 @@
 .timeline-time {
   width: 90rpx;
   font-size: 22rpx;
-  color: #697266;
+  color: #81747d;
 }
 
 .timeline-dot {
@@ -187,19 +193,19 @@
 }
 
 .timeline-dot.soft {
-  background: #6fa183;
+  background: #c9a7f5;
 }
 
 .timeline-dot.warm {
-  background: #da8a53;
+  background: #f59b88;
 }
 
 .timeline-dot.strong {
-  background: #20372a;
+  background: #8f75d8;
 }
 
 .timeline-text {
   flex: 1;
   font-size: 24rpx;
-  color: #4c5a4a;
+  color: #5d535b;
 }

@@ -2,24 +2,25 @@
   min-height: 100vh;
   padding: 28rpx;
   background:
-    radial-gradient(circle at top left, rgba(93, 143, 107, 0.22), transparent 35%),
-    linear-gradient(180deg, #f7f1df 0%, #efe7d0 100%);
+    radial-gradient(circle at 12% 8%, rgba(255, 176, 145, 0.32), transparent 34%),
+    radial-gradient(circle at 88% 10%, rgba(196, 170, 255, 0.28), transparent 36%),
+    linear-gradient(180deg, #fff9f4 0%, #f7f1ff 52%, #fff7ef 100%);
 }
 
 .hero {
   padding: 34rpx 30rpx;
   border-radius: 28rpx;
-  background: #20372a;
-  color: #f7f1df;
-  box-shadow: 0 18rpx 48rpx rgba(31, 42, 31, 0.18);
+  background: linear-gradient(135deg, #f59b88 0%, #b89af6 100%);
+  color: #fffaf7;
+  box-shadow: 0 18rpx 48rpx rgba(168, 132, 188, 0.18);
 }
 
 .hero-tag {
   display: inline-block;
   padding: 8rpx 16rpx;
   border-radius: 999rpx;
-  background: #d7eb9b;
-  color: #20372a;
+  background: rgba(255, 255, 255, 0.68);
+  color: #6a536f;
   font-size: 22rpx;
   font-weight: 700;
 }
@@ -28,28 +29,30 @@
   margin-top: 18rpx;
   font-size: 44rpx;
   font-weight: 700;
+  line-height: 1.18;
 }
 
 .hero-subtitle {
   margin-top: 12rpx;
   font-size: 24rpx;
   line-height: 1.6;
-  color: rgba(247, 241, 223, 0.82);
+  color: rgba(255, 250, 247, 0.86);
 }
 
 .panel {
   margin-top: 24rpx;
   padding: 28rpx;
   border-radius: 24rpx;
-  background: rgba(255, 252, 245, 0.92);
-  box-shadow: 0 14rpx 40rpx rgba(49, 56, 43, 0.08);
+  background: rgba(255, 253, 250, 0.94);
+  border: 1rpx solid rgba(255, 255, 255, 0.72);
+  box-shadow: 0 14rpx 40rpx rgba(168, 132, 188, 0.12);
 }
 
 .panel-title {
   margin-bottom: 20rpx;
   font-size: 30rpx;
   font-weight: 700;
-  color: #20372a;
+  color: #332a31;
 }
 
 .status-row {
@@ -57,7 +60,7 @@
   justify-content: space-between;
   gap: 24rpx;
   padding: 10rpx 0;
-  border-bottom: 1rpx solid rgba(32, 55, 42, 0.08);
+  border-bottom: 1rpx solid rgba(106, 83, 111, 0.08);
 }
 
 .status-row:last-child {
@@ -65,14 +68,16 @@
 }
 
 .label {
-  color: #6f7467;
+  color: #81747d;
   font-size: 24rpx;
 }
 
 .value {
-  color: #20372a;
+  color: #332a31;
   font-size: 24rpx;
   text-align: right;
+  min-width: 0;
+  word-break: break-word;
 }
 
 .multiline {
@@ -97,16 +102,17 @@
 .secondary {
   border-radius: 20rpx;
   font-size: 28rpx;
+  line-height: 1.35;
 }
 
 .primary {
-  background: #20372a;
-  color: #f7f1df;
+  background: linear-gradient(135deg, #f59b88 0%, #b89af6 100%);
+  color: #fffaf7;
 }
 
 .secondary {
-  background: #d7eb9b;
-  color: #20372a;
+  background: rgba(255, 255, 255, 0.72);
+  color: #6a536f;
 }
 
 .metric {
@@ -119,11 +125,11 @@
 .metric-value {
   font-size: 64rpx;
   font-weight: 700;
-  color: #20372a;
+  color: #332a31;
 }
 
 .metric-label {
-  color: #6f7467;
+  color: #81747d;
   font-size: 24rpx;
 }
 
@@ -131,15 +137,15 @@
   margin-top: 18rpx;
   padding: 18rpx;
   border-radius: 18rpx;
-  background: #eef3df;
-  color: #20372a;
+  background: #fff1e9;
+  color: #332a31;
   font-size: 22rpx;
   line-height: 1.6;
   word-break: break-all;
 }
 
 .tip-text {
-  color: #5b6558;
+  color: #756a73;
   font-size: 24rpx;
   line-height: 1.7;
 }

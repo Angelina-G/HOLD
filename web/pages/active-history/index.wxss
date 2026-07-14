@@ -1,14 +1,18 @@
 .history-page {
   min-height: 100vh;
   padding: 28rpx;
-  background: linear-gradient(180deg, #f5eee2 0%, #ece2d0 100%);
+  background:
+    radial-gradient(circle at 12% 8%, rgba(255, 176, 145, 0.3), transparent 34%),
+    radial-gradient(circle at 88% 12%, rgba(196, 170, 255, 0.26), transparent 36%),
+    linear-gradient(180deg, #fff9f4 0%, #f7f1ff 52%, #fff7ef 100%);
 }
 
 .history-hero,
 .history-card {
   border-radius: 28rpx;
-  background: rgba(255, 252, 246, 0.95);
-  box-shadow: 0 18rpx 46rpx rgba(50, 52, 35, 0.08);
+  background: rgba(255, 253, 250, 0.94);
+  border: 1rpx solid rgba(255, 255, 255, 0.72);
+  box-shadow: 0 18rpx 46rpx rgba(168, 132, 188, 0.12);
 }
 
 .history-hero {
@@ -18,14 +22,15 @@
 .hero-title {
   font-size: 42rpx;
   font-weight: 700;
-  color: #20372a;
+  color: #332a31;
+  line-height: 1.18;
 }
 
 .hero-subtitle {
   margin-top: 14rpx;
   font-size: 24rpx;
   line-height: 1.7;
-  color: #667064;
+  color: #756a73;
 }
 
 .history-card {
@@ -44,8 +49,8 @@
   display: inline-block;
   padding: 6rpx 16rpx;
   border-radius: 999rpx;
-  background: #edf2dd;
-  color: #43553f;
+  background: #fff0dc;
+  color: #8c5c4f;
   font-size: 20rpx;
   font-weight: 700;
 }
@@ -54,19 +59,20 @@
   margin-top: 12rpx;
   font-size: 32rpx;
   font-weight: 700;
-  color: #20372a;
+  color: #332a31;
+  line-height: 1.25;
 }
 
 .history-time {
   font-size: 22rpx;
-  color: #697364;
+  color: #81747d;
 }
 
 .history-copy {
   margin-top: 20rpx;
   font-size: 24rpx;
   line-height: 1.8;
-  color: #485446;
+  color: #5d535b;
 }
 
 .metric-grid {
@@ -79,19 +85,20 @@
 .metric-card {
   padding: 18rpx;
   border-radius: 20rpx;
-  background: #f3ecdb;
+  background: #fff6ef;
+  min-width: 0;
 }
 
 .metric-value {
   font-size: 28rpx;
   font-weight: 700;
-  color: #20372a;
+  color: #332a31;
 }
 
 .metric-label {
   margin-top: 8rpx;
   font-size: 22rpx;
-  color: #6b7468;
+  color: #81747d;
 }
 
 .history-footer {
@@ -107,11 +114,11 @@
 .duration-chip {
   padding: 10rpx 16rpx;
   border-radius: 999rpx;
-  background: #f0f4e4;
-  color: #41523d;
+  background: #f3efff;
+  color: #6a536f;
 }
 
 .detail-link {
-  color: #b96737;
+  color: #9b73db;
   font-weight: 700;
 }
