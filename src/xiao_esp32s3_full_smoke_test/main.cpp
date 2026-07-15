@@ -39,6 +39,7 @@ constexpr unsigned long kStartupDelayMs = 300;
 constexpr unsigned long kSerialAttachWaitMs = 1500;
 constexpr unsigned long kStatusLogIntervalMs = 200;
 constexpr unsigned long kBleNotifyIntervalMs = 500;
+constexpr unsigned long kBleWaveNotifyIntervalMs = 50;
 constexpr size_t kBleNotifyChunkBytes = 18;
 constexpr unsigned long kBleNotifyChunkGapMs = 12;
 constexpr unsigned long kMpuPollIntervalMs = 20;
@@ -200,6 +201,7 @@ unsigned long lastPpgPollAtMs = 0;
 unsigned long lastPressurePollAtMs = 0;
 unsigned long lastStatusLogAtMs = 0;
 unsigned long lastBleNotifyAtMs = 0;
+unsigned long lastBleWaveNotifyAtMs = 0;
 unsigned long lastReconnectAtMs = 0;
 unsigned long lastHapticToggleAtMs = 0;
 volatile unsigned long calibrationStartedAtMs = 0;
@@ -386,6 +388,15 @@ void notifyBleStatus(const char* packetType) {
   notifyBlePayload(buildBleStatusJson(packetType));
 }
 
+void notifyBleWave() {
+  if (bleEventCharacteristic == nullptr || !bleClientConnected) {
+    return;
+  }
+  const String payload = "W," + String(lastPpgSample.ir) + "," + String(lastPressureSample.rawAverage);
+  bleEventCharacteristic->setValue(payload.c_str());
+  bleEventCharacteristic->notify();
+}
+
 void notifyCalibrationDoneBurst() {
   const String payload = "{\"t\":\"cal_done\",\"cc\":1}";
   for (uint8_t index = 0; index < 3; ++index) {
@@ -556,10 +567,13 @@ void scanI2cPins(uint8_t sdaPin, uint8_t sclPin, const char* label) {
 }
 
 void scanCandidateI2cPins() {
-  Serial.println("[smoke][i2c-scan] begin three-bus probe");
+  Serial.println("[smoke][i2c-scan] begin three-bus probe, normal then SDA/SCL reversed");
   scanI2cPins(kLegacyI2cSdaPin, kLegacyI2cSclPin, "D2/D3 legacy");
+  scanI2cPins(kLegacyI2cSclPin, kLegacyI2cSdaPin, "D2/D3 reversed");
   scanI2cPins(project_config::kI2cSdaPin, project_config::kI2cSclPin, "D4/D5 primary");
+  scanI2cPins(project_config::kI2cSclPin, project_config::kI2cSdaPin, "D4/D5 reversed");
   scanI2cPins(kSecondaryI2cSdaPin, kSecondaryI2cSclPin, "D6/D7 secondary");
+  scanI2cPins(kSecondaryI2cSclPin, kSecondaryI2cSdaPin, "D6/D7 reversed");
   Serial.println("[smoke][i2c-scan] end; restoring integrated buses");
 }
 
@@ -1056,5 +1070,10 @@ void loop() {
   if (nowMs - lastBleNotifyAtMs >= kBleNotifyIntervalMs) {
     lastBleNotifyAtMs = nowMs;
     notifyBleStatus("telemetry");
+  }
+
+  if (nowMs - lastBleWaveNotifyAtMs >= kBleWaveNotifyIntervalMs) {
+    lastBleWaveNotifyAtMs = nowMs;
+    notifyBleWave();
   }
 }

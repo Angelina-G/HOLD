@@ -478,6 +478,15 @@ Page({
 
   handleNotifyMessage: function (result) {
     var rawText = arrayBufferToString(result.value);
+    if (rawText.indexOf('W,') === 0) {
+      var waveParts = rawText.split(',');
+      var waveIr = Number(waveParts[1] || 0);
+      var wavePressure = Number(waveParts[2]);
+      if (this.pageVisible && isFinite(wavePressure)) {
+        this.appendWavePoint({ pp: waveIr > 0 ? 1 : 0, ir: waveIr, pr: wavePressure });
+      }
+      return;
+    }
     if (this.notifyBuffer && rawText.charAt(0) === '{') {
       this.notifyBuffer = '';
     }
