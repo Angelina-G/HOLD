@@ -4,6 +4,10 @@ var COMMAND_CHARACTERISTIC_UUID = '19b10013-e8f2-537e-4f6c-d104768a1214';
 var DEVICE_NAME_PREFIX = 'HOLD-LINK-TEST';
 var DEVICE_NAME_PREFIXES = ['HOLD-LINK-TEST', 'HOLD-INTEGRATED'];
 
+function holdLog(stage, detail) {
+  console.info('[HOLD][' + stage + ']', detail || '');
+}
+
 function arrayBufferToString(buffer) {
   var bytes = new Uint8Array(buffer);
   var text = '';
@@ -166,9 +170,20 @@ Page({
     var self = this;
     self.connecting = false;
     self.notifyBuffer = '';
+    self.completePacketCount = 0;
+    self.lastTelemetryLogAt = 0;
+    holdLog('PAGE', '调试链路台已加载；遥测写入本地缓存，只有 button_press 事件提交云函数');
     wx.onBLECharacteristicValueChange(function (result) {
       self.handleNotifyMessage(result);
     });
+    if (wx.onBLEConnectionStateChange) {
+      wx.onBLEConnectionStateChange(function (result) {
+        holdLog('CONNECTION_STATE', result);
+        if (result.deviceId === self.data.deviceId && !result.connected) {
+          self.setData({ connectionStatus: '设备连接已断开', canSendCommand: false });
+        }
+      });
+    }
     wx.onBluetoothDeviceFound(function (result) {
       var devices = result.devices || [];
       var target = null;
@@ -185,6 +200,7 @@ Page({
         return;
       }
 
+      holdLog('SCAN', { name: getDeviceName(target), deviceId: target.deviceId });
       self.connecting = true;
       self.setData({
         deviceName: getDeviceName(target) || DEVICE_NAME_PREFIX,
@@ -208,6 +224,7 @@ Page({
   },
 
   handleScanAndConnect: function () {
+    holdLog('BLE', '开始安卓权限检查与扫描');
     this.connecting = false;
     this.setData({
       adapterStatus: '准备蓝牙',
@@ -236,6 +253,7 @@ Page({
     var self = this;
     wx.openBluetoothAdapter({
       success: function () {
+        holdLog('ADAPTER', 'openBluetoothAdapter success');
         wx.getBluetoothAdapterState({
           success: function (state) {
             if (!state.available) {
@@ -251,6 +269,7 @@ Page({
         });
       },
       fail: function (error) {
+        holdLog('ADAPTER_ERROR', error);
         self.setData({
           adapterStatus: '蓝牙初始化失败: ' + errorText(error),
           scanning: false
@@ -265,12 +284,14 @@ Page({
       allowDuplicatesKey: true,
       interval: 0,
       success: function () {
+        holdLog('DISCOVERY', 'startBluetoothDevicesDiscovery success');
         self.setData({
           adapterStatus: '扫描中，等待 HOLD-LINK-TEST / HOLD-INTEGRATED',
           scanning: true
         });
       },
       fail: function (error) {
+        holdLog('DISCOVERY_ERROR', error);
         self.setData({
           adapterStatus: '扫描失败: ' + errorText(error),
           scanning: false
@@ -296,11 +317,13 @@ Page({
       deviceId: deviceId,
       timeout: 10000,
       success: function () {
+        holdLog('CONNECT', { deviceId: deviceId });
         self.connecting = false;
         self.setData({ connectionStatus: '已连接，获取服务中' });
         self.fetchServices(deviceId);
       },
       fail: function (error) {
+        holdLog('CONNECT_ERROR', error);
         self.connecting = false;
         self.setData({
           canSendCommand: false,
@@ -316,6 +339,7 @@ Page({
       deviceId: deviceId,
       success: function (result) {
         var services = result.services || [];
+        holdLog('SERVICES', services.map(function (item) { return item.uuid; }));
         var service = null;
         for (var index = 0; index < services.length; index += 1) {
           if (services[index].uuid.toLowerCase() === SERVICE_UUID) {
@@ -331,6 +355,7 @@ Page({
         self.fetchCharacteristics(deviceId, service.uuid);
       },
       fail: function (error) {
+        holdLog('SERVICES_ERROR', error);
         self.setData({ connectionStatus: '获取服务失败: ' + errorText(error) });
       }
     });
@@ -343,6 +368,9 @@ Page({
       serviceId: serviceId,
       success: function (result) {
         var characteristics = result.characteristics || [];
+        holdLog('CHARACTERISTICS', characteristics.map(function (item) {
+          return { uuid: item.uuid, properties: item.properties };
+        }));
         var eventCharacteristic = null;
         var commandCharacteristic = null;
         for (var index = 0; index < characteristics.length; index += 1) {
@@ -365,6 +393,7 @@ Page({
         self.enableNotify(deviceId, serviceId, eventCharacteristic.uuid);
       },
       fail: function (error) {
+        holdLog('CHARACTERISTICS_ERROR', error);
         self.setData({ connectionStatus: '获取特征失败: ' + errorText(error) });
       }
     });
@@ -378,12 +407,14 @@ Page({
       characteristicId: characteristicId,
       state: true,
       success: function () {
+        holdLog('NOTIFY', '通知订阅成功，等待完整 JSON 帧');
         self.setData({
           connectionStatus: '已订阅硬件通知',
           adapterStatus: '链路已打通，可发送呼吸或校准命令'
         });
       },
       fail: function (error) {
+        holdLog('NOTIFY_ERROR', error);
         self.setData({ connectionStatus: '订阅失败: ' + errorText(error) });
       }
     });
@@ -399,8 +430,12 @@ Page({
       serviceId: this.data.serviceId,
       characteristicId: this.data.commandCharacteristicId,
       value: stringToArrayBuffer(command),
-      success: this.setData.bind(this, { connectionStatus: '已发送 ' + command }),
+      success: function () {
+        holdLog('COMMAND', command);
+        this.setData({ connectionStatus: '已发送 ' + command });
+      }.bind(this),
       fail: function (error) {
+        holdLog('COMMAND_ERROR', { command: command, error: error });
         this.setData({ connectionStatus: '发送失败: ' + errorText(error) });
       }.bind(this)
     });
@@ -452,6 +487,21 @@ Page({
       }
 
       cacheTelemetry(payload);
+      self.completePacketCount = Number(self.completePacketCount || 0) + 1;
+      var now = Date.now();
+      if (eventType !== 'tel' || !self.lastTelemetryLogAt || now - self.lastTelemetryLogAt >= 5000) {
+        self.lastTelemetryLogAt = now;
+        holdLog('FRAME', {
+          count: self.completePacketCount,
+          type: eventType,
+          seq: payload.seq,
+          ppg: payload.pp,
+          imu: payload.mr,
+          pressure: payload.pr,
+          cached: true,
+          cloud: eventType === 'button_press' ? 'submit' : 'not-used'
+        });
+      }
 
       self.setData({
         pressCount: Number(payload.press_count || payload.bc || self.data.pressCount || 0),
@@ -471,6 +521,7 @@ Page({
   },
 
   submitEventToCloud: function (eventPayload) {
+    holdLog('CLOUD_REQUEST', eventPayload);
     this.setData({ cloudStatus: '提交云函数中...' });
     wx.cloud.callFunction({
       name: 'link_test_ingest',
@@ -483,6 +534,7 @@ Page({
       },
       success: function (result) {
         var payload = result.result || {};
+        holdLog('CLOUD_SUCCESS', payload);
         this.setData({
           cloudStatus: payload.code === 200 ? '成功' : '失败: ' + (payload.msg || 'unknown'),
           storagePath: payload.storage_cloud_path || payload.storage_file_id || '未写入',
@@ -490,6 +542,7 @@ Page({
         });
       }.bind(this),
       fail: function (error) {
+        holdLog('CLOUD_ERROR', error);
         this.setData({
           cloudStatus: '调用失败: ' + error.errMsg,
           llmReply: '云函数调用失败'

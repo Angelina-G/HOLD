@@ -62,6 +62,8 @@ constexpr unsigned long kCalibrationDurationMs = 12000;
 constexpr unsigned long kCalibrationPulseMs = 250;
 constexpr uint8_t kSecondaryI2cSdaPin = 43;
 constexpr uint8_t kSecondaryI2cSclPin = 44;
+constexpr uint8_t kLegacyI2cSdaPin = 3;
+constexpr uint8_t kLegacyI2cSclPin = 4;
 
 constexpr uint8_t kHeaterControlPin = 2;   // D1/A1
 constexpr uint8_t kHeaterPwmChannel = 2;
@@ -516,6 +518,34 @@ bool probeI2cAddress(TwoWire& wireBus, uint8_t address) {
   return wireBus.endTransmission() == 0;
 }
 
+void scanI2cPins(uint8_t sdaPin, uint8_t sclPin, const char* label) {
+  Wire.begin(sdaPin, sclPin);
+  Wire.setClock(project_config::kI2cClockHz);
+  Wire.setTimeOut(kI2cTimeoutMs);
+  delay(25);
+
+  Serial.printf(
+      "[smoke][i2c-scan] %s SDA=GPIO%u SCL=GPIO%u | 57=%c 68=%c 69=%c 5A=%c | idle SDA=%c SCL=%c\n",
+      label,
+      static_cast<unsigned>(sdaPin),
+      static_cast<unsigned>(sclPin),
+      visibleFlag(probeI2cAddress(Wire, project_config::kMax30102Address)),
+      visibleFlag(probeI2cAddress(Wire, kMpuAddressLow)),
+      visibleFlag(probeI2cAddress(Wire, kMpuAddressHigh)),
+      visibleFlag(probeI2cAddress(Wire, kDrv2605Address)),
+      digitalRead(sdaPin) == HIGH ? 'H' : 'L',
+      digitalRead(sclPin) == HIGH ? 'H' : 'L');
+  Wire.end();
+}
+
+void scanCandidateI2cPins() {
+  Serial.println("[smoke][i2c-scan] begin three-bus probe");
+  scanI2cPins(kLegacyI2cSdaPin, kLegacyI2cSclPin, "D2/D3 legacy");
+  scanI2cPins(project_config::kI2cSdaPin, project_config::kI2cSclPin, "D4/D5 primary");
+  scanI2cPins(kSecondaryI2cSdaPin, kSecondaryI2cSclPin, "D6/D7 secondary");
+  Serial.println("[smoke][i2c-scan] end; restoring integrated buses");
+}
+
 void refreshI2cVisibility() {
   mpuAddressLowSeen = probeI2cAddress(*sensorWire, kMpuAddressLow);
   mpuAddressHighSeen = probeI2cAddress(*sensorWire, kMpuAddressHigh);
@@ -916,6 +946,7 @@ void setup() {
   logBootStage("serial-ready");
   pulseBoardLed(2);
 
+  scanCandidateI2cPins();
   Wire.begin(project_config::kI2cSdaPin, project_config::kI2cSclPin);
   Wire.setClock(project_config::kI2cClockHz);
   secondaryWire.begin(kSecondaryI2cSdaPin, kSecondaryI2cSclPin, project_config::kI2cClockHz);
