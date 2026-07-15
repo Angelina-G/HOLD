@@ -35,6 +35,30 @@ function errorText(error) {
   return error.errCode || error.errMsg || 'unknown';
 }
 
+function present(value) {
+  return value !== undefined && value !== null && value !== '' && value !== false;
+}
+
+function numericPositive(value) {
+  return Number(value || 0) > 0;
+}
+
+function buildSignalSummary(payload) {
+  const checks = [
+    ['佩戴', present(payload.wear) ? Number(payload.wear) === 1 : present(payload.contact)],
+    ['PPG', numericPositive(payload.ir) || numericPositive(payload.red)],
+    ['运动', present(payload.motion) || present(payload.mo) || present(payload.ax) || present(payload.ay) || present(payload.az)],
+    ['压力', numericPositive(payload.pr) || numericPositive(payload.pl) || numericPositive(payload.pressure)],
+    ['震动', present(payload.hp) ? Number(payload.hp) === 1 : Boolean(payload.haptic_ready)]
+  ];
+  const ok = checks.filter((item) => item[1]).map((item) => item[0]);
+  const missing = checks.filter((item) => !item[1]).map((item) => item[0]);
+  return {
+    text: missing.length ? `已到 ${ok.length}/5，缺少：${missing.join('、')}` : '5/5 信号已到齐',
+    okCount: ok.length
+  };
+}
+
 function takeJsonMessages(buffer, chunk) {
   let text = `${buffer || ''}${chunk || ''}`;
   const firstBrace = text.indexOf('{');
@@ -97,6 +121,7 @@ Page({
     calibrationRunning: false,
     hapticReady: false,
     pressCount: 0,
+    signalStatus: '等待硬件数据',
     lastEventTime: '暂无',
     lastEventRaw: '等待硬件通知...',
     cloudStatus: '未提交',
@@ -137,10 +162,6 @@ Page({
 
   onUnload() {
     this.stopDiscovery();
-    if (this.data.deviceId) {
-      wx.closeBLEConnection({ deviceId: this.data.deviceId });
-    }
-    wx.closeBluetoothAdapter({});
   },
 
   handleScanAndConnect() {
@@ -313,6 +334,10 @@ Page({
   },
 
   startCalibration() {
+    this.setData({
+      calibrationRunning: true,
+      signalStatus: '校准命令已发送，等待硬件回传'
+    });
     this.sendCommand('calibrate_start');
   },
 
@@ -343,9 +368,10 @@ Page({
 
       this.setData({
         pressCount: Number(payload.press_count || payload.bc || this.data.pressCount || 0),
-        breathRunning: Boolean(payload.breath_enabled),
-        calibrationRunning: Boolean(payload.calibration_running),
-        hapticReady: Boolean(payload.haptic_ready),
+        breathRunning: present(payload.bg) ? Number(payload.bg) === 1 : Boolean(payload.breath_enabled),
+        calibrationRunning: present(payload.cg) ? Number(payload.cg) === 1 : Boolean(payload.calibration_running),
+        hapticReady: present(payload.hp) ? Number(payload.hp) === 1 : Boolean(payload.haptic_ready),
+        signalStatus: buildSignalSummary(payload).text,
         lastEventTime: new Date().toLocaleString(),
         lastEventRaw: message,
         connectionStatus: '已收到硬件数据'

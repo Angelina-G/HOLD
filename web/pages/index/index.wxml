@@ -30,6 +30,7 @@
     <view class="status-row"><text class="label">震动驱动</text><text class="value">{{hapticReady ? 'DRV2605L 就绪' : '未检测到，使用 LED 兜底'}}</text></view>
     <view class="status-row"><text class="label">呼吸反馈</text><text class="value">{{breathRunning ? '运行中' : '停止'}}</text></view>
     <view class="status-row"><text class="label">基础校准</text><text class="value">{{calibrationRunning ? '运行中' : '空闲'}}</text></view>
+    <view class="status-row"><text class="label">信号闭环</text><text class="value">{{signalStatus}}</text></view>
   </view>
 
   <view class="panel">
