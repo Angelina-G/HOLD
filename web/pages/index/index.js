@@ -58,12 +58,13 @@ function hasAny(payload, keys) {
 }
 
 function buildSignalSummary(payload) {
+  var ppgLabel = present(payload.p57) && Number(payload.p57) !== 1 ? 'PPG（D4/D5 I2C 未响应）' : 'PPG';
   var checks = [
     ['佩戴', present(payload.wear) ? Number(payload.wear) === 1 : present(payload.contact)],
-    ['PPG', numericPositive(payload.ir) || numericPositive(payload.red)],
-    ['运动', hasAny(payload, ['motion', 'mo', 'ax', 'ay', 'az'])],
+    [ppgLabel, Number(payload.pp || 0) === 1 && (numericPositive(payload.ir) || numericPositive(payload.red))],
+    ['运动', present(payload.mr) ? Number(payload.mr) === 1 : hasAny(payload, ['motion', 'ax', 'ay', 'az'])],
     ['压力', hasAny(payload, ['pr', 'pl', 'pressure'])],
-    ['震动', hasAny(payload, ['hp', 'haptic_ready'])]
+    ['震动', present(payload.hp) ? Number(payload.hp) === 1 : Boolean(payload.haptic_ready)]
   ];
   var ok = [];
   var missing = [];
@@ -442,6 +443,11 @@ Page({
       if (eventType === 'cal_done' || eventType === 'calibration_done') {
         calibrationRunning = false;
       }
+
+      wx.setStorageSync('hold_latest_telemetry', {
+        payload: payload,
+        receivedAt: Date.now()
+      });
 
       self.setData({
         pressCount: Number(payload.press_count || payload.bc || self.data.pressCount || 0),
