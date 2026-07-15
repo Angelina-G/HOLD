@@ -35,6 +35,53 @@ function errorText(error) {
   return error.errCode || error.errMsg || 'unknown';
 }
 
+function takeJsonMessages(buffer, chunk) {
+  let text = `${buffer || ''}${chunk || ''}`;
+  const firstBrace = text.indexOf('{');
+  if (firstBrace === -1) {
+    return { messages: [], rest: '' };
+  }
+  text = text.slice(firstBrace);
+
+  const messages = [];
+  let start = 0;
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+
+  for (let index = 0; index < text.length; index += 1) {
+    const char = text[index];
+    if (inString) {
+      if (escaped) {
+        escaped = false;
+      } else if (char === '\\') {
+        escaped = true;
+      } else if (char === '"') {
+        inString = false;
+      }
+      continue;
+    }
+
+    if (char === '"') {
+      inString = true;
+    } else if (char === '{') {
+      depth += 1;
+    } else if (char === '}') {
+      depth -= 1;
+      if (depth === 0) {
+        messages.push(text.slice(start, index + 1));
+        start = index + 1;
+        while (text[start] && text[start] !== '{') {
+          start += 1;
+        }
+        index = start - 1;
+      }
+    }
+  }
+
+  return { messages, rest: text.slice(start) };
+}
+
 Page({
   data: {
     adapterStatus: '未初始化',
@@ -59,6 +106,7 @@ Page({
 
   onLoad() {
     this.connecting = false;
+    this.notifyBuffer = '';
     wx.onBLECharacteristicValueChange((result) => this.handleNotifyMessage(result));
     wx.onBluetoothDeviceFound((result) => {
       if (this.connecting || this.data.deviceId) {
@@ -270,30 +318,43 @@ Page({
 
   handleNotifyMessage(result) {
     const rawText = arrayBufferToString(result.value);
-    let payload = null;
+    const batch = takeJsonMessages(this.notifyBuffer, rawText);
+    this.notifyBuffer = batch.rest.slice(-2048);
 
-    try {
-      payload = JSON.parse(rawText);
-    } catch (error) {
+    if (!batch.messages.length) {
       this.setData({
-        lastEventRaw: `通知解析失败: ${rawText}`,
-        connectionStatus: '收到无法解析的通知'
+        lastEventRaw: `接收分片: ${this.notifyBuffer}`,
+        connectionStatus: '正在接收硬件数据'
       });
       return;
     }
 
-    this.setData({
-      pressCount: Number(payload.press_count || this.data.pressCount || 0),
-      breathRunning: Boolean(payload.breath_enabled),
-      calibrationRunning: Boolean(payload.calibration_running),
-      hapticReady: Boolean(payload.haptic_ready),
-      lastEventTime: new Date().toLocaleString(),
-      lastEventRaw: rawText
-    });
+    batch.messages.forEach((message) => {
+      let payload = null;
+      try {
+        payload = JSON.parse(message);
+      } catch (error) {
+        this.setData({
+          lastEventRaw: `通知解析失败: ${message}`,
+          connectionStatus: '收到损坏的硬件通知'
+        });
+        return;
+      }
 
-    if (payload.event_type === 'button_press') {
-      this.submitEventToCloud(payload);
-    }
+      this.setData({
+        pressCount: Number(payload.press_count || payload.bc || this.data.pressCount || 0),
+        breathRunning: Boolean(payload.breath_enabled),
+        calibrationRunning: Boolean(payload.calibration_running),
+        hapticReady: Boolean(payload.haptic_ready),
+        lastEventTime: new Date().toLocaleString(),
+        lastEventRaw: message,
+        connectionStatus: '已收到硬件数据'
+      });
+
+      if (payload.event_type === 'button_press') {
+        this.submitEventToCloud(payload);
+      }
+    });
   },
 
   submitEventToCloud(eventPayload) {

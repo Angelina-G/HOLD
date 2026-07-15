@@ -4,6 +4,7 @@ page {
   font-family: "PingFang SC", "Microsoft YaHei", sans-serif;
   -webkit-font-smoothing: antialiased;
   box-sizing: border-box;
+  overflow-x: hidden;
 }
 
 view,
@@ -19,4 +20,11 @@ button {
   margin: 0;
   padding-left: 18rpx;
   padding-right: 18rpx;
+  min-width: 0;
+  box-sizing: border-box;
+  overflow: hidden;
+}
+
+button::after {
+  border: 0;
 }

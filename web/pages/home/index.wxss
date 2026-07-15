@@ -1,6 +1,7 @@
 .home-page {
   min-height: 100vh;
   padding: 28rpx;
+  overflow-x: hidden;
   background:
     radial-gradient(circle at 14% 8%, rgba(255, 176, 145, 0.34), transparent 32%),
     radial-gradient(circle at 88% 14%, rgba(196, 170, 255, 0.28), transparent 34%),
@@ -105,6 +106,7 @@
   background: rgba(255, 251, 244, 0.94);
   border: 1rpx solid rgba(255, 255, 255, 0.72);
   box-shadow: 0 18rpx 48rpx rgba(168, 132, 188, 0.12);
+  overflow: hidden;
 }
 
 .highlight-card {
@@ -253,9 +255,11 @@
 
 .double-actions {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 18rpx;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 16rpx;
   margin-top: 24rpx;
+  width: 100%;
+  overflow: hidden;
 }
 
 .solid-button,
@@ -267,6 +271,11 @@
   display: flex;
   align-items: center;
   justify-content: center;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  padding-left: 16rpx;
+  padding-right: 16rpx;
 }
 
 .solid-button {
