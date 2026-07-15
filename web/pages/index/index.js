@@ -1,22 +1,22 @@
-const SERVICE_UUID = '19b10010-e8f2-537e-4f6c-d104768a1214';
-const EVENT_CHARACTERISTIC_UUID = '19b10011-e8f2-537e-4f6c-d104768a1214';
-const COMMAND_CHARACTERISTIC_UUID = '19b10013-e8f2-537e-4f6c-d104768a1214';
-const DEVICE_NAME_PREFIX = 'HOLD-LINK-TEST';
-const DEVICE_NAME_PREFIXES = ['HOLD-LINK-TEST', 'HOLD-INTEGRATED'];
+var SERVICE_UUID = '19b10010-e8f2-537e-4f6c-d104768a1214';
+var EVENT_CHARACTERISTIC_UUID = '19b10011-e8f2-537e-4f6c-d104768a1214';
+var COMMAND_CHARACTERISTIC_UUID = '19b10013-e8f2-537e-4f6c-d104768a1214';
+var DEVICE_NAME_PREFIX = 'HOLD-LINK-TEST';
+var DEVICE_NAME_PREFIXES = ['HOLD-LINK-TEST', 'HOLD-INTEGRATED'];
 
 function arrayBufferToString(buffer) {
-  const bytes = new Uint8Array(buffer);
-  let text = '';
-  for (let index = 0; index < bytes.length; index += 1) {
+  var bytes = new Uint8Array(buffer);
+  var text = '';
+  for (var index = 0; index < bytes.length; index += 1) {
     text += String.fromCharCode(bytes[index]);
   }
   return text;
 }
 
 function stringToArrayBuffer(text) {
-  const buffer = new ArrayBuffer(text.length);
-  const view = new Uint8Array(buffer);
-  for (let index = 0; index < text.length; index += 1) {
+  var buffer = new ArrayBuffer(text.length);
+  var view = new Uint8Array(buffer);
+  for (var index = 0; index < text.length; index += 1) {
     view[index] = text.charCodeAt(index);
   }
   return buffer;
@@ -27,8 +27,13 @@ function getDeviceName(device) {
 }
 
 function isTargetDevice(device) {
-  const name = getDeviceName(device);
-  return DEVICE_NAME_PREFIXES.some((prefix) => name.indexOf(prefix) !== -1);
+  var name = getDeviceName(device);
+  for (var index = 0; index < DEVICE_NAME_PREFIXES.length; index += 1) {
+    if (name.indexOf(DEVICE_NAME_PREFIXES[index]) !== -1) {
+      return true;
+    }
+  }
+  return false;
 }
 
 function errorText(error) {
@@ -44,37 +49,44 @@ function numericPositive(value) {
 }
 
 function buildSignalSummary(payload) {
-  const checks = [
+  var checks = [
     ['佩戴', present(payload.wear) ? Number(payload.wear) === 1 : present(payload.contact)],
     ['PPG', numericPositive(payload.ir) || numericPositive(payload.red)],
     ['运动', present(payload.motion) || present(payload.mo) || present(payload.ax) || present(payload.ay) || present(payload.az)],
     ['压力', numericPositive(payload.pr) || numericPositive(payload.pl) || numericPositive(payload.pressure)],
     ['震动', present(payload.hp) ? Number(payload.hp) === 1 : Boolean(payload.haptic_ready)]
   ];
-  const ok = checks.filter((item) => item[1]).map((item) => item[0]);
-  const missing = checks.filter((item) => !item[1]).map((item) => item[0]);
+  var ok = [];
+  var missing = [];
+  for (var index = 0; index < checks.length; index += 1) {
+    if (checks[index][1]) {
+      ok.push(checks[index][0]);
+    } else {
+      missing.push(checks[index][0]);
+    }
+  }
   return {
-    text: missing.length ? `已到 ${ok.length}/5，缺少：${missing.join('、')}` : '5/5 信号已到齐',
+    text: missing.length ? '已到 ' + ok.length + '/5，缺少：' + missing.join('、') : '5/5 信号已到齐',
     okCount: ok.length
   };
 }
 
 function takeJsonMessages(buffer, chunk) {
-  let text = `${buffer || ''}${chunk || ''}`;
-  const firstBrace = text.indexOf('{');
+  var text = String(buffer || '') + String(chunk || '');
+  var firstBrace = text.indexOf('{');
   if (firstBrace === -1) {
     return { messages: [], rest: '' };
   }
   text = text.slice(firstBrace);
 
-  const messages = [];
-  let start = 0;
-  let depth = 0;
-  let inString = false;
-  let escaped = false;
+  var messages = [];
+  var start = 0;
+  var depth = 0;
+  var inString = false;
+  var escaped = false;
 
-  for (let index = 0; index < text.length; index += 1) {
-    const char = text[index];
+  for (var index = 0; index < text.length; index += 1) {
+    var char = text[index];
     if (inString) {
       if (escaped) {
         escaped = false;
@@ -103,7 +115,7 @@ function takeJsonMessages(buffer, chunk) {
     }
   }
 
-  return { messages, rest: text.slice(start) };
+  return { messages: messages, rest: text.slice(start) };
 }
 
 Page({
@@ -129,42 +141,52 @@ Page({
     llmReply: '暂无'
   },
 
-  onLoad() {
-    this.connecting = false;
-    this.notifyBuffer = '';
-    wx.onBLECharacteristicValueChange((result) => this.handleNotifyMessage(result));
-    wx.onBluetoothDeviceFound((result) => {
-      if (this.connecting || this.data.deviceId) {
+  onLoad: function () {
+    var self = this;
+    self.connecting = false;
+    self.notifyBuffer = '';
+    wx.onBLECharacteristicValueChange(function (result) {
+      self.handleNotifyMessage(result);
+    });
+    wx.onBluetoothDeviceFound(function (result) {
+      var devices = result.devices || [];
+      var target = null;
+      if (self.connecting || self.data.deviceId) {
         return;
       }
-
-      const target = (result.devices || []).find(isTargetDevice);
+      for (var index = 0; index < devices.length; index += 1) {
+        if (isTargetDevice(devices[index])) {
+          target = devices[index];
+          break;
+        }
+      }
       if (!target) {
         return;
       }
 
-      this.connecting = true;
-      this.setData({
+      self.connecting = true;
+      self.setData({
         deviceName: getDeviceName(target) || DEVICE_NAME_PREFIX,
         deviceId: target.deviceId,
         adapterStatus: '已发现目标设备',
         connectionStatus: '正在连接'
       });
-
       wx.stopBluetoothDevicesDiscovery({
-        complete: () => {
-          this.setData({ scanning: false });
-          setTimeout(() => this.connectDevice(target.deviceId), 300);
+        complete: function () {
+          self.setData({ scanning: false });
+          setTimeout(function () {
+            self.connectDevice(target.deviceId);
+          }, 300);
         }
       });
     });
   },
 
-  onUnload() {
+  onUnload: function () {
     this.stopDiscovery();
   },
 
-  handleScanAndConnect() {
+  handleScanAndConnect: function () {
     this.connecting = false;
     this.setData({
       adapterStatus: '准备蓝牙',
@@ -172,168 +194,202 @@ Page({
       scanning: true,
       canSendCommand: false
     });
-
-    this.ensureAndroidScanReady(() => this.openAdapterAndScan());
+    this.ensureAndroidScanReady(this.openAdapterAndScan.bind(this));
   },
 
-  ensureAndroidScanReady(next) {
-    const systemInfo = wx.getSystemInfoSync ? wx.getSystemInfoSync() : {};
+  ensureAndroidScanReady: function (next) {
+    var systemInfo = wx.getSystemInfoSync ? wx.getSystemInfoSync() : {};
     if ((systemInfo.platform || '').toLowerCase() !== 'android') {
       next();
       return;
     }
-
     wx.authorize({
       scope: 'scope.userLocation',
-      complete: () => next()
+      complete: function () {
+        next();
+      }
     });
   },
 
-  openAdapterAndScan() {
+  openAdapterAndScan: function () {
+    var self = this;
     wx.openBluetoothAdapter({
-      success: () => {
+      success: function () {
         wx.getBluetoothAdapterState({
-          success: (state) => {
+          success: function (state) {
             if (!state.available) {
-              this.setData({ adapterStatus: '蓝牙不可用，请打开系统蓝牙', scanning: false });
+              self.setData({ adapterStatus: '蓝牙不可用，请打开系统蓝牙', scanning: false });
               return;
             }
-            this.setData({ adapterStatus: '蓝牙已开启，开始扫描' });
-            this.startDiscovery();
+            self.setData({ adapterStatus: '蓝牙已开启，开始扫描' });
+            self.startDiscovery();
           },
-          fail: () => this.startDiscovery()
+          fail: function () {
+            self.startDiscovery();
+          }
         });
       },
-      fail: (error) => {
-        this.setData({
-          adapterStatus: `蓝牙初始化失败: ${errorText(error)}`,
+      fail: function (error) {
+        self.setData({
+          adapterStatus: '蓝牙初始化失败: ' + errorText(error),
           scanning: false
         });
       }
     });
   },
 
-  startDiscovery() {
+  startDiscovery: function () {
+    var self = this;
     wx.startBluetoothDevicesDiscovery({
       allowDuplicatesKey: true,
       interval: 0,
-      success: () => this.setData({
-        adapterStatus: '扫描中，等待 HOLD-LINK-TEST / HOLD-INTEGRATED',
-        scanning: true
-      }),
-      fail: (error) => this.setData({
-        adapterStatus: `扫描失败: ${errorText(error)}`,
-        scanning: false
-      })
-    });
-  },
-
-  stopDiscovery() {
-    wx.stopBluetoothDevicesDiscovery({
-      complete: () => {
-        if (this.data.scanning) {
-          this.setData({ scanning: false });
-        }
-      }
-    });
-  },
-
-  connectDevice(deviceId) {
-    wx.createBLEConnection({
-      deviceId,
-      timeout: 10000,
-      success: () => {
-        this.connecting = false;
-        this.setData({ connectionStatus: '已连接，获取服务中' });
-        this.fetchServices(deviceId);
+      success: function () {
+        self.setData({
+          adapterStatus: '扫描中，等待 HOLD-LINK-TEST / HOLD-INTEGRATED',
+          scanning: true
+        });
       },
-      fail: (error) => {
-        this.connecting = false;
-        this.setData({
-          canSendCommand: false,
-          connectionStatus: `连接失败: ${errorText(error)}`
+      fail: function (error) {
+        self.setData({
+          adapterStatus: '扫描失败: ' + errorText(error),
+          scanning: false
         });
       }
     });
   },
 
-  fetchServices(deviceId) {
-    wx.getBLEDeviceServices({
-      deviceId,
-      success: (result) => {
-        const service = (result.services || []).find((item) => item.uuid.toLowerCase() === SERVICE_UUID);
-        if (!service) {
-          this.setData({ connectionStatus: '未找到 HOLD 服务' });
-          return;
+  stopDiscovery: function () {
+    var self = this;
+    wx.stopBluetoothDevicesDiscovery({
+      complete: function () {
+        if (self.data.scanning) {
+          self.setData({ scanning: false });
         }
-
-        this.setData({ serviceId: service.uuid, connectionStatus: '服务已找到，获取特征中' });
-        this.fetchCharacteristics(deviceId, service.uuid);
-      },
-      fail: (error) => this.setData({ connectionStatus: `获取服务失败: ${errorText(error)}` })
+      }
     });
   },
 
-  fetchCharacteristics(deviceId, serviceId) {
-    wx.getBLEDeviceCharacteristics({
-      deviceId,
-      serviceId,
-      success: (result) => {
-        const characteristics = result.characteristics || [];
-        const eventCharacteristic = characteristics.find((item) => item.uuid.toLowerCase() === EVENT_CHARACTERISTIC_UUID);
-        const commandCharacteristic = characteristics.find((item) => item.uuid.toLowerCase() === COMMAND_CHARACTERISTIC_UUID);
+  connectDevice: function (deviceId) {
+    var self = this;
+    wx.createBLEConnection({
+      deviceId: deviceId,
+      timeout: 10000,
+      success: function () {
+        self.connecting = false;
+        self.setData({ connectionStatus: '已连接，获取服务中' });
+        self.fetchServices(deviceId);
+      },
+      fail: function (error) {
+        self.connecting = false;
+        self.setData({
+          canSendCommand: false,
+          connectionStatus: '连接失败: ' + errorText(error)
+        });
+      }
+    });
+  },
 
-        if (!eventCharacteristic || !commandCharacteristic) {
-          this.setData({ connectionStatus: '缺少通知或命令特征，请确认固件版本' });
+  fetchServices: function (deviceId) {
+    var self = this;
+    wx.getBLEDeviceServices({
+      deviceId: deviceId,
+      success: function (result) {
+        var services = result.services || [];
+        var service = null;
+        for (var index = 0; index < services.length; index += 1) {
+          if (services[index].uuid.toLowerCase() === SERVICE_UUID) {
+            service = services[index];
+            break;
+          }
+        }
+        if (!service) {
+          self.setData({ connectionStatus: '未找到 HOLD 服务' });
           return;
         }
+        self.setData({ serviceId: service.uuid, connectionStatus: '服务已找到，获取特征中' });
+        self.fetchCharacteristics(deviceId, service.uuid);
+      },
+      fail: function (error) {
+        self.setData({ connectionStatus: '获取服务失败: ' + errorText(error) });
+      }
+    });
+  },
 
-        this.setData({
+  fetchCharacteristics: function (deviceId, serviceId) {
+    var self = this;
+    wx.getBLEDeviceCharacteristics({
+      deviceId: deviceId,
+      serviceId: serviceId,
+      success: function (result) {
+        var characteristics = result.characteristics || [];
+        var eventCharacteristic = null;
+        var commandCharacteristic = null;
+        for (var index = 0; index < characteristics.length; index += 1) {
+          var uuid = characteristics[index].uuid.toLowerCase();
+          if (uuid === EVENT_CHARACTERISTIC_UUID) {
+            eventCharacteristic = characteristics[index];
+          } else if (uuid === COMMAND_CHARACTERISTIC_UUID) {
+            commandCharacteristic = characteristics[index];
+          }
+        }
+        if (!eventCharacteristic || !commandCharacteristic) {
+          self.setData({ connectionStatus: '缺少通知或命令特征，请确认固件版本' });
+          return;
+        }
+        self.setData({
           eventCharacteristicId: eventCharacteristic.uuid,
           commandCharacteristicId: commandCharacteristic.uuid,
           canSendCommand: true
         });
-        this.enableNotify(deviceId, serviceId, eventCharacteristic.uuid);
+        self.enableNotify(deviceId, serviceId, eventCharacteristic.uuid);
       },
-      fail: (error) => this.setData({ connectionStatus: `获取特征失败: ${errorText(error)}` })
+      fail: function (error) {
+        self.setData({ connectionStatus: '获取特征失败: ' + errorText(error) });
+      }
     });
   },
 
-  enableNotify(deviceId, serviceId, characteristicId) {
+  enableNotify: function (deviceId, serviceId, characteristicId) {
+    var self = this;
     wx.notifyBLECharacteristicValueChange({
-      deviceId,
-      serviceId,
-      characteristicId,
+      deviceId: deviceId,
+      serviceId: serviceId,
+      characteristicId: characteristicId,
       state: true,
-      success: () => this.setData({
-        connectionStatus: '已订阅硬件通知',
-        adapterStatus: '链路已打通，可发送呼吸或校准命令'
-      }),
-      fail: (error) => this.setData({ connectionStatus: `订阅失败: ${errorText(error)}` })
+      success: function () {
+        self.setData({
+          connectionStatus: '已订阅硬件通知',
+          adapterStatus: '链路已打通，可发送呼吸或校准命令'
+        });
+      },
+      fail: function (error) {
+        self.setData({ connectionStatus: '订阅失败: ' + errorText(error) });
+      }
     });
   },
 
-  sendCommand(command) {
+  sendCommand: function (command) {
     if (!this.data.canSendCommand) {
       this.setData({ connectionStatus: '未连接命令特征，不能发送' });
       return;
     }
-
     wx.writeBLECharacteristicValue({
       deviceId: this.data.deviceId,
       serviceId: this.data.serviceId,
       characteristicId: this.data.commandCharacteristicId,
       value: stringToArrayBuffer(command),
-      success: () => this.setData({ connectionStatus: `已发送 ${command}` }),
-      fail: (error) => this.setData({ connectionStatus: `发送失败: ${errorText(error)}` })
+      success: this.setData.bind(this, { connectionStatus: '已发送 ' + command }),
+      fail: function (error) {
+        this.setData({ connectionStatus: '发送失败: ' + errorText(error) });
+      }.bind(this)
     });
   },
 
-  toggleBreath() {
+  toggleBreath: function () {
     this.sendCommand(this.data.breathRunning ? 'breath_stop' : 'breath_start');
   },
 
-  startCalibration() {
+  startCalibration: function () {
     this.setData({
       calibrationRunning: true,
       signalStatus: '校准命令已发送，等待硬件回传'
@@ -341,33 +397,34 @@ Page({
     this.sendCommand('calibrate_start');
   },
 
-  handleNotifyMessage(result) {
-    const rawText = arrayBufferToString(result.value);
-    const batch = takeJsonMessages(this.notifyBuffer, rawText);
+  handleNotifyMessage: function (result) {
+    var rawText = arrayBufferToString(result.value);
+    var batch = takeJsonMessages(this.notifyBuffer, rawText);
+    var self = this;
     this.notifyBuffer = batch.rest.slice(-2048);
 
     if (!batch.messages.length) {
       this.setData({
-        lastEventRaw: `接收分片: ${this.notifyBuffer}`,
+        lastEventRaw: '接收分片: ' + this.notifyBuffer,
         connectionStatus: '正在接收硬件数据'
       });
       return;
     }
 
-    batch.messages.forEach((message) => {
-      let payload = null;
+    batch.messages.forEach(function (message) {
+      var payload = null;
       try {
         payload = JSON.parse(message);
       } catch (error) {
-        this.setData({
-          lastEventRaw: `通知解析失败: ${message}`,
+        self.setData({
+          lastEventRaw: '通知解析失败: ' + message,
           connectionStatus: '收到损坏的硬件通知'
         });
         return;
       }
 
-      this.setData({
-        pressCount: Number(payload.press_count || payload.bc || this.data.pressCount || 0),
+      self.setData({
+        pressCount: Number(payload.press_count || payload.bc || self.data.pressCount || 0),
         breathRunning: present(payload.bg) ? Number(payload.bg) === 1 : Boolean(payload.breath_enabled),
         calibrationRunning: present(payload.cg) ? Number(payload.cg) === 1 : Boolean(payload.calibration_running),
         hapticReady: present(payload.hp) ? Number(payload.hp) === 1 : Boolean(payload.haptic_ready),
@@ -378,12 +435,12 @@ Page({
       });
 
       if (payload.event_type === 'button_press') {
-        this.submitEventToCloud(payload);
+        self.submitEventToCloud(payload);
       }
     });
   },
 
-  submitEventToCloud(eventPayload) {
+  submitEventToCloud: function (eventPayload) {
     this.setData({ cloudStatus: '提交云函数中...' });
     wx.cloud.callFunction({
       name: 'link_test_ingest',
@@ -394,40 +451,44 @@ Page({
         device_timestamp: eventPayload.device_timestamp,
         miniapp_timestamp: Date.now()
       },
-      success: (result) => {
-        const payload = result.result || {};
+      success: function (result) {
+        var payload = result.result || {};
         this.setData({
-          cloudStatus: payload.code === 200 ? '成功' : `失败: ${payload.msg || 'unknown'}`,
+          cloudStatus: payload.code === 200 ? '成功' : '失败: ' + (payload.msg || 'unknown'),
           storagePath: payload.storage_cloud_path || payload.storage_file_id || '未写入',
           llmReply: payload.llm_reply || '未返回文本'
         });
-      },
-      fail: (error) => this.setData({
-        cloudStatus: `调用失败: ${error.errMsg}`,
-        llmReply: '云函数调用失败'
-      })
+      }.bind(this),
+      fail: function (error) {
+        this.setData({
+          cloudStatus: '调用失败: ' + error.errMsg,
+          llmReply: '云函数调用失败'
+        });
+      }.bind(this)
     });
   },
 
-  disconnectDevice() {
+  disconnectDevice: function () {
+    var self = this;
     this.connecting = false;
     this.stopDiscovery();
     if (!this.data.deviceId) {
       return;
     }
-
     wx.closeBLEConnection({
       deviceId: this.data.deviceId,
-      complete: () => this.setData({
-        connectionStatus: '已断开',
-        deviceId: '',
-        serviceId: '',
-        eventCharacteristicId: '',
-        commandCharacteristicId: '',
-        canSendCommand: false,
-        breathRunning: false,
-        calibrationRunning: false
-      })
+      complete: function () {
+        self.setData({
+          connectionStatus: '已断开',
+          deviceId: '',
+          serviceId: '',
+          eventCharacteristicId: '',
+          commandCharacteristicId: '',
+          canSendCommand: false,
+          breathRunning: false,
+          calibrationRunning: false
+        });
+      }
     });
   }
 });
