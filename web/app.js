@@ -1,4 +1,6 @@
 App({
+  globalData: {},
+
   onLaunch() {
     if (!wx.cloud) {
       console.error('当前基础库不支持云开发');

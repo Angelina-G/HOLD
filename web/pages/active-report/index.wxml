@@ -18,7 +18,7 @@
   </view>
 
   <view class="report-panel">
-    <view class="panel-title">波形摘要占位</view>
+    <view class="panel-title">实时波形摘要</view>
     <view class="wave-grid">
       <block wx:for="{{report.waveformMoments}}" wx:key="label">
         <view class="wave-col">

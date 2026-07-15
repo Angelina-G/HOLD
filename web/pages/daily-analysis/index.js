@@ -12,7 +12,17 @@ Page({
   },
 
   onShow() {
+    clearInterval(this.liveTimer);
     this.refreshAnalysis();
+    this.liveTimer = setInterval(this.refreshAnalysis.bind(this), 1000);
+  },
+
+  onHide() {
+    clearInterval(this.liveTimer);
+  },
+
+  onUnload() {
+    clearInterval(this.liveTimer);
   },
 
   refreshAnalysis() {

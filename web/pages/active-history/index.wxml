@@ -1,7 +1,7 @@
 <view class="history-page">
   <view class="history-hero">
     <view class="hero-title">主动检测历史</view>
-    <view class="hero-subtitle">先用固定内容占位，后续替换为真实指部 PPG 检测记录与报告。</view>
+    <view class="hero-subtitle">设备遥测会先记录在本机；PPG 可用后自动补充心率、呼吸与波形报告。</view>
   </view>
 
   <block wx:for="{{activeMeasurements}}" wx:key="id">

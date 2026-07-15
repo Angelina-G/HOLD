@@ -35,6 +35,7 @@ vm.runInNewContext(fs.readFileSync('web/pages/index/index.js', 'utf8'), context)
 page.setData = function setData(update) {
   Object.assign(this.data, update);
 };
+page.pageVisible = true;
 page.notifyBuffer = '';
 
 function feed(payload) {
@@ -48,10 +49,20 @@ function feed(payload) {
 feed({ t: 'tel', pp: 1, p57: 1, mr: 1, ir: 123, red: 456, pr: 0, pl: 0, hp: 1, wear: 1 });
 assert.strictEqual(cached.payload.ir, 123);
 assert.ok(!page.data.signalStatus.includes('缺少'));
+assert.strictEqual(page.data.waveSource, 'PPG 红外原始波形');
+assert.strictEqual(page.data.waveValue, '123');
 
 feed({ t: 'tel', pp: 0, p57: 0, pe: 'part-id-read-failed', mr: 0, mo: 'imu-miss', pr: 1, hp: 1, wear: 1 });
 assert.ok(page.data.signalStatus.includes('PPG（D4/D5 I2C 未响应）'));
 assert.ok(page.data.signalStatus.includes('运动'));
+assert.strictEqual(page.data.waveSource, '压力原始波形');
+assert.strictEqual(page.data.waveValue, '1');
+
+page.pageVisible = false;
+feed({ t: 'tel', pp: 0, mr: 0, pr: 2, hp: 1, wear: 1 });
+assert.strictEqual(cached.payload.pr, 2);
+assert.strictEqual(page.data.waveValue, '1');
+page.pageVisible = true;
 
 storage.hold_telemetry_samples[storage.hold_telemetry_samples.length - 1].receivedAt -= 1001;
 feed({ t: 'tel', pp: 1, p57: 1, mr: 1, ir: 123, red: 456, hr: 72, br: 14, pr: 1, hp: 1, wear: 1 });
@@ -64,10 +75,10 @@ vm.runInNewContext(fs.readFileSync('web/pages/home/index.js', 'utf8'), {
     return {
       homeOverview: { readinessScore: 80 },
       getLatestMeasurement() {
-        return { metrics: [{ value: '0' }] };
+        return { metrics: [{ value: '72' }] };
       },
       getLatestDailyAnalysis() {
-        return { heartRateAvg: 0, respirationAvg: 0 };
+        return { heartRateAvg: '72', respirationAvg: '14' };
       }
     };
   },
@@ -96,6 +107,7 @@ assert.strictEqual(homePage.data.latestDaily.respirationAvg, '14');
 global.wx = { getStorageSync: (key) => storage[key] };
 const healthData = require('../utils/mock-health-data');
 assert.strictEqual(healthData.getMeasurements()[0].id, 'live-latest');
+assert.strictEqual(healthData.getMeasurements()[0].metrics[3].label, '压力原始值');
 assert.strictEqual(healthData.getLatestDailyAnalysis().heartRateAvg, '72');
 delete global.wx;
 

@@ -94,12 +94,12 @@
       <view class="analysis-stat stability">
         <text class="analysis-number">{{latestDaily.stabilityScore}}</text>
         <text class="analysis-unit">/100</text>
-        <text class="analysis-label">稳定度</text>
+        <text class="analysis-label">数据完整度</text>
       </view>
     </view>
 
     <view class="line-preview">
-      <view class="line-preview-title">近 7 个时段趋势占位</view>
+      <view class="line-preview-title">近 7 个采样时段趋势</view>
       <view class="line-track">
         <block wx:for="{{latestDaily.heartRateBars}}" wx:key="index">
           <view class="spark-node" style="height: {{item}}rpx"></view>
@@ -124,7 +124,7 @@
     <view class="advice-copy">{{homeOverview.recentAdvice}}</view>
 
     <view class="trend-card">
-      <view class="trend-title">近期综合评分趋势占位</view>
+      <view class="trend-title">近期综合评分趋势</view>
       <view class="trend-bars">
         <block wx:for="{{homeOverview.trendSeries}}" wx:key="index">
           <view class="trend-item">

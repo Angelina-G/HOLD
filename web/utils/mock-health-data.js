@@ -207,6 +207,18 @@ function chartMoments(samples) {
   }));
 }
 
+function normalizedSeries(samples, key) {
+  const values = samples.map((item) => Number(item.payload[key] || 0)).filter((value) => value > 0);
+  if (!values.length) {
+    return [0, 0, 0, 0, 0, 0, 0];
+  }
+  const indexes = [0, 1, 2, 3, 4, 5, 6].map((step) => Math.min(values.length - 1, Math.round(step * (values.length - 1) / 6)));
+  const selected = indexes.map((index) => values[index]);
+  const min = Math.min.apply(null, selected);
+  const max = Math.max.apply(null, selected);
+  return selected.map((value) => max === min ? 56 : Math.round(36 + (value - min) * 48 / (max - min)));
+}
+
 function buildLiveMeasurement() {
   const samples = currentSessionSamples();
   if (!samples.length) {
@@ -217,6 +229,9 @@ function buildLiveMeasurement() {
   const heartRate = positiveAverage(samples, 'hr');
   const respiration = positiveAverage(samples, 'br');
   const ppgReady = Number(latest.payload.pp || 0) === 1 && Number(latest.payload.ir || 0) > 0;
+  const pressure = Number(latest.payload.pr);
+  const hasPressure = isFinite(pressure);
+  const motion = latest.payload.mo && latest.payload.mo !== 'imu-miss' ? latest.payload.mo : '未检测到';
   const durationSeconds = Math.max(1, Math.round((latest.receivedAt - first.receivedAt) / 1000));
 
   return {
@@ -224,17 +239,20 @@ function buildLiveMeasurement() {
     title: 'HOLD 实时采集记录',
     startedAt: new Date(latest.receivedAt).toLocaleString(),
     durationLabel: `${durationSeconds} 秒`,
-    resultTag: ppgReady ? '实时数据' : '等待 PPG',
-    summary: ppgReady ? '设备实时数据已同步，可继续保持佩戴以形成稳定记录。' : '蓝牙链路已通，但 PPG 传感器尚未返回有效原始值。',
+    resultTag: ppgReady ? 'PPG 实时数据' : hasPressure ? '压力实时数据' : '链路已连接',
+    summary: ppgReady ? '设备实时数据已同步，可继续保持佩戴以形成稳定记录。' : '蓝牙与记录链路持续更新；当前可读取压力，PPG 与运动传感器尚未在 I2C 总线上响应。',
     metrics: [
       { label: '平均心率', value: heartRate ? heartRate.toFixed(0) : '--', unit: heartRate ? ' bpm' : '' },
       { label: '平均呼吸', value: respiration ? respiration.toFixed(0) : '--', unit: respiration ? ' 次/分' : '' },
-      { label: 'PPG 原始值', value: Number(latest.payload.ir || 0) || '--', unit: '' }
+      { label: 'PPG 红外', value: Number(latest.payload.ir || 0) || '--', unit: '' },
+      { label: '压力原始值', value: hasPressure ? pressure : '--', unit: '' },
+      { label: '运动状态', value: motion, unit: '' },
+      { label: '佩戴状态', value: Number(latest.payload.wear || 0) === 1 ? '已佩戴' : '未佩戴', unit: '' }
     ],
     waveformMoments: chartMoments(samples),
     reportSections: [
       { heading: '链路状态', text: `最近收到序号 ${latest.payload.seq || '--'} 的完整硬件遥测。` },
-      { heading: '传感器状态', text: ppgReady ? 'PPG 已初始化并返回红外原始数据。' : `PPG 未就绪：${latest.payload.pe || '未收到 I2C 数据'}。` },
+      { heading: '传感器状态', text: ppgReady ? 'PPG 已初始化并返回红外原始数据。' : `PPG 未就绪：${latest.payload.pe || '未收到 I2C 数据'}；IMU：${latest.payload.mo || '未上报'}。` },
       { heading: '建议', text: ppgReady ? '保持传感器贴合并减少移动，继续采集至少 60 秒。' : '检查 MAX30102 的 3V3、GND、SDA 与 SCL 接线。' }
     ]
   };
@@ -252,12 +270,21 @@ function getDailyAnalyses() {
   }
   const heartRate = positiveAverage(samples, 'hr');
   const respiration = positiveAverage(samples, 'br');
+  const latest = samples[samples.length - 1];
+  const completeness = Math.round(samples.reduce((sum, item) => {
+    const payload = item.payload;
+    return sum + [payload.hp, payload.pp, payload.mr, Number.isFinite(Number(payload.pr)), payload.wear].filter(Boolean).length;
+  }, 0) * 20 / samples.length);
   const liveDay = Object.assign({}, dailyAnalyses[0], {
     day: new Date().toLocaleDateString(),
     title: '今日实时',
     heartRateAvg: heartRate ? heartRate.toFixed(0) : '--',
     respirationAvg: respiration ? respiration.toFixed(0) : '--',
-    insight: heartRate || respiration ? '今日实时遥测已同步，继续稳定佩戴可提高统计可靠性。' : '数据链路已建立，正在等待有效的 PPG 与呼吸数据。'
+    stabilityScore: completeness,
+    respirationBars: normalizedSeries(samples, 'br'),
+    heartRateBars: normalizedSeries(samples, 'hr'),
+    insight: heartRate || respiration ? '今日实时遥测已同步，继续稳定佩戴可提高统计可靠性。' : '压力遥测正在持续记录；PPG 与 IMU 当前未响应，因此不会生成虚假的心率和呼吸值。',
+    timeline: [{ time: new Date(latest.receivedAt).toLocaleTimeString(), label: `最新遥测序号 ${latest.payload.seq || '--'}`, tone: 'strong' }]
   });
   return [liveDay].concat(dailyAnalyses);
 }

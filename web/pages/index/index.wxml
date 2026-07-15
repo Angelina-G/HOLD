@@ -33,6 +33,18 @@
     <view class="status-row"><text class="label">信号闭环</text><text class="value">{{signalStatus}}</text></view>
   </view>
 
+  <view class="panel wave-panel">
+    <view class="wave-header">
+      <view>
+        <view class="panel-title wave-title">实时数据波形</view>
+        <view class="wave-source">{{waveSource}}</view>
+      </view>
+      <view class="wave-reading"><text class="wave-value">{{waveValue}}</text><text class="wave-unit">{{waveUnit}}</text></view>
+    </view>
+    <canvas canvas-id="liveWaveCanvas" class="live-wave-canvas"></canvas>
+    <view class="wave-note">PPG 可用时显示红外原始波形，否则显示压力原始波形。</view>
+  </view>
+
   <view class="panel">
     <view class="panel-title">最近硬件通知</view>
     <view class="metric"><text class="metric-value">{{pressCount}}</text><text class="metric-label">累计按钮事件</text></view>
@@ -41,7 +53,9 @@
   </view>
 
   <view class="panel">
-    <view class="panel-title">云端处理结果</view>
+    <view class="panel-title">数据去向</view>
+    <view class="status-row"><text class="label">实时遥测</text><text class="value">{{localRecordStatus}}</text></view>
+    <view class="status-row"><text class="label">云端测试</text><text class="value">仅按钮事件触发</text></view>
     <view class="status-row"><text class="label">云函数</text><text class="value">{{cloudStatus}}</text></view>
     <view class="status-row"><text class="label">云存储</text><text class="value">{{storagePath}}</text></view>
     <view class="status-row"><text class="label">模型回复</text><text class="value multiline">{{llmReply}}</text></view>

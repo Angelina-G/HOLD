@@ -1,7 +1,7 @@
 <view class="daily-page" wx:if="{{activeDay}}">
   <view class="daily-hero">
     <view class="hero-title">当日呼吸与心跳分析</view>
-    <view class="hero-subtitle">以天为单位查看摘要结果，先用固定内容占位，后续替换为真实日级聚合数据。</view>
+    <view class="hero-subtitle">以天为单位查看摘要结果；连接设备时，今日数据会随硬件遥测自动更新。</view>
   </view>
 
   <scroll-view class="day-tabs" scroll-x="true" enable-flex="true">
@@ -27,12 +27,12 @@
     <view class="stat-card stable">
       <view class="stat-value">{{activeDay.stabilityScore}}</view>
       <view class="stat-unit">/100</view>
-      <view class="stat-label">稳定度</view>
+      <view class="stat-label">数据完整度</view>
     </view>
   </view>
 
   <view class="chart-panel">
-    <view class="panel-title">呼吸趋势占位</view>
+    <view class="panel-title">呼吸趋势</view>
     <view class="bars-row">
       <block wx:for="{{activeDay.respirationBars}}" wx:key="index">
         <view class="bar-slot">
@@ -43,7 +43,7 @@
   </view>
 
   <view class="chart-panel">
-    <view class="panel-title">心率趋势占位</view>
+    <view class="panel-title">心率趋势</view>
     <view class="bars-row">
       <block wx:for="{{activeDay.heartRateBars}}" wx:key="index">
         <view class="bar-slot">

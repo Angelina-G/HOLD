@@ -524,11 +524,28 @@ void scanI2cPins(uint8_t sdaPin, uint8_t sclPin, const char* label) {
   Wire.setTimeOut(kI2cTimeoutMs);
   delay(25);
 
+  String foundAddresses;
+  for (uint8_t address = 0x08; address <= 0x77; ++address) {
+    if (!probeI2cAddress(Wire, address)) {
+      continue;
+    }
+    if (!foundAddresses.isEmpty()) {
+      foundAddresses += ',';
+    }
+    char hexAddress[5];
+    snprintf(hexAddress, sizeof(hexAddress), "0x%02X", address);
+    foundAddresses += hexAddress;
+  }
+  if (foundAddresses.isEmpty()) {
+    foundAddresses = "none";
+  }
+
   Serial.printf(
-      "[smoke][i2c-scan] %s SDA=GPIO%u SCL=GPIO%u | 57=%c 68=%c 69=%c 5A=%c | idle SDA=%c SCL=%c\n",
+      "[smoke][i2c-scan] %s SDA=GPIO%u SCL=GPIO%u | found=%s | 57=%c 68=%c 69=%c 5A=%c | idle SDA=%c SCL=%c\n",
       label,
       static_cast<unsigned>(sdaPin),
       static_cast<unsigned>(sclPin),
+      foundAddresses.c_str(),
       visibleFlag(probeI2cAddress(Wire, project_config::kMax30102Address)),
       visibleFlag(probeI2cAddress(Wire, kMpuAddressLow)),
       visibleFlag(probeI2cAddress(Wire, kMpuAddressHigh)),

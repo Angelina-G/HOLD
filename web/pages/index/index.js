@@ -158,6 +158,10 @@ Page({
     calibrationRunning: false,
     hapticReady: false,
     pressCount: 0,
+    waveSource: '等待硬件数据',
+    waveValue: '--',
+    waveUnit: '',
+    localRecordStatus: '等待硬件遥测',
     signalStatus: '等待硬件数据',
     lastEventTime: '暂无',
     lastEventRaw: '等待硬件通知...',
@@ -168,18 +172,28 @@ Page({
 
   onLoad: function () {
     var self = this;
+    self.pageVisible = true;
+    self.app = typeof getApp === 'function' ? getApp() : null;
+    if (self.app && self.app.globalData) {
+      self.app.globalData.blePage = self;
+    }
     self.connecting = false;
     self.notifyBuffer = '';
     self.completePacketCount = 0;
     self.lastTelemetryLogAt = 0;
+    self.wavePoints = [];
+    self.wavePointSource = '';
     holdLog('PAGE', '调试链路台已加载；遥测写入本地缓存，只有 button_press 事件提交云函数');
     wx.onBLECharacteristicValueChange(function (result) {
+      if (self.app && self.app.globalData.blePage !== self) {
+        return;
+      }
       self.handleNotifyMessage(result);
     });
     if (wx.onBLEConnectionStateChange) {
       wx.onBLEConnectionStateChange(function (result) {
         holdLog('CONNECTION_STATE', result);
-        if (result.deviceId === self.data.deviceId && !result.connected) {
+        if (result.deviceId === self.data.deviceId && !result.connected && self.pageVisible) {
           self.setData({ connectionStatus: '设备连接已断开', canSendCommand: false });
         }
       });
@@ -219,7 +233,16 @@ Page({
     });
   },
 
+  onShow: function () {
+    this.pageVisible = true;
+  },
+
+  onHide: function () {
+    this.pageVisible = false;
+  },
+
   onUnload: function () {
+    this.pageVisible = false;
     this.stopDiscovery();
   },
 
@@ -471,10 +494,12 @@ Page({
       try {
         payload = JSON.parse(message);
       } catch (error) {
-        self.setData({
-          lastEventRaw: '通知解析失败: ' + message,
-          connectionStatus: '收到损坏的硬件通知'
-        });
+        if (self.pageVisible) {
+          self.setData({
+            lastEventRaw: '通知解析失败: ' + message,
+            connectionStatus: '收到损坏的硬件通知'
+          });
+        }
         return;
       }
 
@@ -487,6 +512,9 @@ Page({
       }
 
       cacheTelemetry(payload);
+      if (self.pageVisible) {
+        self.appendWavePoint(payload);
+      }
       self.completePacketCount = Number(self.completePacketCount || 0) + 1;
       var now = Date.now();
       if (eventType !== 'tel' || !self.lastTelemetryLogAt || now - self.lastTelemetryLogAt >= 5000) {
@@ -503,21 +531,89 @@ Page({
         });
       }
 
-      self.setData({
-        pressCount: Number(payload.press_count || payload.bc || self.data.pressCount || 0),
-        breathRunning: present(payload.bg) ? Number(payload.bg) === 1 : Boolean(payload.breath_enabled),
-        calibrationRunning: calibrationRunning,
-        hapticReady: hasAny(payload, ['hp', 'haptic_ready']),
-        signalStatus: eventType === 'cal_done' || eventType === 'calibration_done' ? '基础校准完成，数据链路已解析' : buildSignalSummary(payload).text,
-        lastEventTime: new Date().toLocaleString(),
-        lastEventRaw: message,
-        connectionStatus: '已收到硬件数据'
-      });
+      if (self.pageVisible) {
+        self.setData({
+          pressCount: Number(payload.press_count || payload.bc || self.data.pressCount || 0),
+          breathRunning: present(payload.bg) ? Number(payload.bg) === 1 : Boolean(payload.breath_enabled),
+          calibrationRunning: calibrationRunning,
+          hapticReady: hasAny(payload, ['hp', 'haptic_ready']),
+          signalStatus: eventType === 'cal_done' || eventType === 'calibration_done' ? '基础校准完成，数据链路已解析' : buildSignalSummary(payload).text,
+          lastEventTime: new Date().toLocaleString(),
+          lastEventRaw: message,
+          localRecordStatus: '已写入本地记录，序号 ' + (payload.seq || '--'),
+          connectionStatus: '已收到硬件数据'
+        });
+      }
 
       if (eventType === 'button_press') {
         self.submitEventToCloud(payload);
       }
     });
+  },
+
+  appendWavePoint: function (payload) {
+    var hasPpg = Number(payload.pp || 0) === 1 && numericPositive(payload.ir);
+    var source = hasPpg ? 'PPG 红外原始波形' : '压力原始波形';
+    var value = Number(hasPpg ? payload.ir : payload.pr);
+    if (!isFinite(value)) {
+      return;
+    }
+
+    if (this.wavePointSource !== source) {
+      this.wavePointSource = source;
+      this.wavePoints = [];
+    }
+    this.wavePoints.push(value);
+    this.wavePoints = this.wavePoints.slice(-80);
+    this.setData({
+      waveSource: source,
+      waveValue: String(Math.round(value)),
+      waveUnit: hasPpg ? 'IR' : 'ADC'
+    });
+    this.drawLiveWave();
+  },
+
+  drawLiveWave: function () {
+    if (!wx.createCanvasContext || !this.wavePoints || !this.wavePoints.length) {
+      return;
+    }
+
+    var width = 300;
+    var height = 140;
+    var padding = 12;
+    var points = this.wavePoints;
+    var minimum = Math.min.apply(null, points);
+    var maximum = Math.max.apply(null, points);
+    var range = Math.max(maximum - minimum, 1);
+    var context = wx.createCanvasContext('liveWaveCanvas', this);
+
+    context.setFillStyle('#fffaf8');
+    context.fillRect(0, 0, width, height);
+    context.setStrokeStyle('rgba(105, 83, 116, 0.12)');
+    context.setLineWidth(1);
+    for (var gridLine = 1; gridLine < 4; gridLine += 1) {
+      var gridY = (height / 4) * gridLine;
+      context.beginPath();
+      context.moveTo(padding, gridY);
+      context.lineTo(width - padding, gridY);
+      context.stroke();
+    }
+
+    context.setStrokeStyle(this.wavePointSource.indexOf('PPG') === 0 ? '#ef7f89' : '#9675d8');
+    context.setLineWidth(2);
+    context.setLineJoin('round');
+    context.beginPath();
+    for (var index = 0; index < points.length; index += 1) {
+      var x = padding + (width - padding * 2) * (points.length === 1 ? 1 : index / (points.length - 1));
+      var y = height - padding - ((points[index] - minimum) / range) * (height - padding * 2);
+      if (index === 0) {
+        context.moveTo(x, y);
+      } else {
+        context.lineTo(x, y);
+      }
+    }
+    context.stroke();
+    context.draw();
   },
 
   submitEventToCloud: function (eventPayload) {
