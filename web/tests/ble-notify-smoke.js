@@ -4,6 +4,7 @@ const vm = require('vm');
 
 let page;
 let cached;
+const storage = {};
 const context = {
   Page(config) {
     page = config;
@@ -12,7 +13,11 @@ const context = {
     onBLECharacteristicValueChange() {},
     onBluetoothDeviceFound() {},
     setStorageSync(key, value) {
+      storage[key] = value;
       if (key === 'hold_latest_telemetry') cached = value;
+    },
+    getStorageSync(key) {
+      return storage[key];
     }
   },
   console,
@@ -48,6 +53,7 @@ feed({ t: 'tel', pp: 0, p57: 0, pe: 'part-id-read-failed', mr: 0, mo: 'imu-miss'
 assert.ok(page.data.signalStatus.includes('PPG（D4/D5 I2C 未响应）'));
 assert.ok(page.data.signalStatus.includes('运动'));
 
+storage.hold_telemetry_samples[storage.hold_telemetry_samples.length - 1].receivedAt -= 1001;
 feed({ t: 'tel', pp: 1, p57: 1, mr: 1, ir: 123, red: 456, hr: 72, br: 14, pr: 1, hp: 1, wear: 1 });
 let homePage;
 vm.runInNewContext(fs.readFileSync('web/pages/home/index.js', 'utf8'), {
@@ -86,5 +92,11 @@ homePage.data.latestDaily = { heartRateAvg: 0, respirationAvg: 0 };
 homePage.refreshLiveTelemetry();
 assert.strictEqual(homePage.data.latestMeasurement.metrics[0].value, '72');
 assert.strictEqual(homePage.data.latestDaily.respirationAvg, '14');
+
+global.wx = { getStorageSync: (key) => storage[key] };
+const healthData = require('../utils/mock-health-data');
+assert.strictEqual(healthData.getMeasurements()[0].id, 'live-latest');
+assert.strictEqual(healthData.getLatestDailyAnalysis().heartRateAvg, '72');
+delete global.wx;
 
 console.log('BLE notify smoke test passed');

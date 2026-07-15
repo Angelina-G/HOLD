@@ -1,4 +1,4 @@
-const { activeMeasurements } = require('../../utils/mock-health-data');
+const { getMeasurements } = require('../../utils/mock-health-data');
 
 Page({
   data: {
@@ -6,7 +6,15 @@ Page({
   },
 
   onLoad() {
-    this.setData({ activeMeasurements });
+    this.refreshRecords();
+  },
+
+  onShow() {
+    this.refreshRecords();
+  },
+
+  refreshRecords() {
+    this.setData({ activeMeasurements: getMeasurements() });
   },
 
   openReport(event) {

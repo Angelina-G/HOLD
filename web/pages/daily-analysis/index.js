@@ -1,4 +1,4 @@
-const { dailyAnalyses } = require('../../utils/mock-health-data');
+const { getDailyAnalyses } = require('../../utils/mock-health-data');
 
 Page({
   data: {
@@ -8,6 +8,15 @@ Page({
   },
 
   onLoad() {
+    this.refreshAnalysis();
+  },
+
+  onShow() {
+    this.refreshAnalysis();
+  },
+
+  refreshAnalysis() {
+    const dailyAnalyses = getDailyAnalyses();
     this.setData({
       dailyAnalyses,
       activeDay: dailyAnalyses[0]

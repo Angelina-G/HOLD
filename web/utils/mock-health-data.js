@@ -164,22 +164,122 @@ const homeOverview = {
   trendSeries: [68, 72, 79, 76, 81, 84, 82]
 };
 
+function storedSamples() {
+  if (typeof wx === 'undefined' || !wx.getStorageSync) {
+    return [];
+  }
+  return wx.getStorageSync('hold_telemetry_samples') || [];
+}
+
+function positiveAverage(samples, key) {
+  const values = samples.map((item) => Number(item.payload[key] || 0)).filter((value) => value > 0);
+  if (!values.length) {
+    return 0;
+  }
+  return values.reduce((sum, value) => sum + value, 0) / values.length;
+}
+
+function recentSamples() {
+  const cutoff = Date.now() - 24 * 60 * 60 * 1000;
+  return storedSamples().filter((item) => item && item.payload && item.receivedAt >= cutoff);
+}
+
+function currentSessionSamples() {
+  const samples = recentSamples();
+  let start = samples.length ? samples.length - 1 : 0;
+  while (start > 0 && samples[start].receivedAt - samples[start - 1].receivedAt <= 10000) {
+    start -= 1;
+  }
+  return samples.slice(start);
+}
+
+function chartMoments(samples) {
+  if (!samples.length) {
+    return [];
+  }
+  const indexes = [0, 1, 2, 3, 4, 5].map((step) => Math.min(samples.length - 1, Math.round(step * (samples.length - 1) / 5)));
+  const values = indexes.map((index) => Number(samples[index].payload.ir || samples[index].payload.pr || 0));
+  const min = Math.min.apply(null, values);
+  const max = Math.max.apply(null, values);
+  return values.map((value, index) => ({
+    label: index === 0 ? '开始' : index === 5 ? '当前' : `${index * 10}秒`,
+    value: max === min ? 50 : Math.round(30 + (value - min) * 60 / (max - min))
+  }));
+}
+
+function buildLiveMeasurement() {
+  const samples = currentSessionSamples();
+  if (!samples.length) {
+    return null;
+  }
+  const latest = samples[samples.length - 1];
+  const first = samples[0];
+  const heartRate = positiveAverage(samples, 'hr');
+  const respiration = positiveAverage(samples, 'br');
+  const ppgReady = Number(latest.payload.pp || 0) === 1 && Number(latest.payload.ir || 0) > 0;
+  const durationSeconds = Math.max(1, Math.round((latest.receivedAt - first.receivedAt) / 1000));
+
+  return {
+    id: 'live-latest',
+    title: 'HOLD 实时采集记录',
+    startedAt: new Date(latest.receivedAt).toLocaleString(),
+    durationLabel: `${durationSeconds} 秒`,
+    resultTag: ppgReady ? '实时数据' : '等待 PPG',
+    summary: ppgReady ? '设备实时数据已同步，可继续保持佩戴以形成稳定记录。' : '蓝牙链路已通，但 PPG 传感器尚未返回有效原始值。',
+    metrics: [
+      { label: '平均心率', value: heartRate ? heartRate.toFixed(0) : '--', unit: heartRate ? ' bpm' : '' },
+      { label: '平均呼吸', value: respiration ? respiration.toFixed(0) : '--', unit: respiration ? ' 次/分' : '' },
+      { label: 'PPG 原始值', value: Number(latest.payload.ir || 0) || '--', unit: '' }
+    ],
+    waveformMoments: chartMoments(samples),
+    reportSections: [
+      { heading: '链路状态', text: `最近收到序号 ${latest.payload.seq || '--'} 的完整硬件遥测。` },
+      { heading: '传感器状态', text: ppgReady ? 'PPG 已初始化并返回红外原始数据。' : `PPG 未就绪：${latest.payload.pe || '未收到 I2C 数据'}。` },
+      { heading: '建议', text: ppgReady ? '保持传感器贴合并减少移动，继续采集至少 60 秒。' : '检查 MAX30102 的 3V3、GND、SDA 与 SCL 接线。' }
+    ]
+  };
+}
+
+function getMeasurements() {
+  const live = buildLiveMeasurement();
+  return live ? [live].concat(activeMeasurements) : activeMeasurements;
+}
+
+function getDailyAnalyses() {
+  const samples = recentSamples();
+  if (!samples.length) {
+    return dailyAnalyses;
+  }
+  const heartRate = positiveAverage(samples, 'hr');
+  const respiration = positiveAverage(samples, 'br');
+  const liveDay = Object.assign({}, dailyAnalyses[0], {
+    day: new Date().toLocaleDateString(),
+    title: '今日实时',
+    heartRateAvg: heartRate ? heartRate.toFixed(0) : '--',
+    respirationAvg: respiration ? respiration.toFixed(0) : '--',
+    insight: heartRate || respiration ? '今日实时遥测已同步，继续稳定佩戴可提高统计可靠性。' : '数据链路已建立，正在等待有效的 PPG 与呼吸数据。'
+  });
+  return [liveDay].concat(dailyAnalyses);
+}
+
 function getLatestMeasurement() {
-  return activeMeasurements[0];
+  return buildLiveMeasurement() || activeMeasurements[0];
 }
 
 function getMeasurementById(id) {
-  return activeMeasurements.find((item) => item.id === id) || activeMeasurements[0];
+  return getMeasurements().find((item) => item.id === id) || getLatestMeasurement();
 }
 
 function getLatestDailyAnalysis() {
-  return dailyAnalyses[0];
+  return getDailyAnalyses()[0];
 }
 
 module.exports = {
   activeMeasurements,
   dailyAnalyses,
   homeOverview,
+  getMeasurements,
+  getDailyAnalyses,
   getLatestMeasurement,
   getMeasurementById,
   getLatestDailyAnalysis

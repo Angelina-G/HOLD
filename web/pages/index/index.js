@@ -128,6 +128,17 @@ function takeJsonMessages(buffer, chunk) {
   return { messages: messages, rest: text.slice(start) };
 }
 
+function cacheTelemetry(payload) {
+  var now = Date.now();
+  wx.setStorageSync('hold_latest_telemetry', { payload: payload, receivedAt: now });
+
+  var samples = wx.getStorageSync('hold_telemetry_samples') || [];
+  if (!samples.length || now - samples[samples.length - 1].receivedAt >= 1000) {
+    samples.push({ payload: payload, receivedAt: now });
+    wx.setStorageSync('hold_telemetry_samples', samples.slice(-300));
+  }
+}
+
 Page({
   data: {
     adapterStatus: '未初始化',
@@ -417,10 +428,6 @@ Page({
     this.notifyBuffer = batch.rest.slice(-2048);
 
     if (!batch.messages.length) {
-      this.setData({
-        lastEventRaw: '接收分片: ' + this.notifyBuffer,
-        connectionStatus: this.notifyBuffer.length > 160 ? '硬件通知被截断，需更新固件分片发送' : '正在接收硬件数据'
-      });
       return;
     }
 
@@ -444,10 +451,7 @@ Page({
         calibrationRunning = false;
       }
 
-      wx.setStorageSync('hold_latest_telemetry', {
-        payload: payload,
-        receivedAt: Date.now()
-      });
+      cacheTelemetry(payload);
 
       self.setData({
         pressCount: Number(payload.press_count || payload.bc || self.data.pressCount || 0),
