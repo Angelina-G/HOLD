@@ -48,13 +48,22 @@ function numericPositive(value) {
   return Number(value || 0) > 0;
 }
 
+function hasAny(payload, keys) {
+  for (var index = 0; index < keys.length; index += 1) {
+    if (present(payload[keys[index]])) {
+      return true;
+    }
+  }
+  return false;
+}
+
 function buildSignalSummary(payload) {
   var checks = [
     ['佩戴', present(payload.wear) ? Number(payload.wear) === 1 : present(payload.contact)],
     ['PPG', numericPositive(payload.ir) || numericPositive(payload.red)],
-    ['运动', present(payload.motion) || present(payload.mo) || present(payload.ax) || present(payload.ay) || present(payload.az)],
-    ['压力', numericPositive(payload.pr) || numericPositive(payload.pl) || numericPositive(payload.pressure)],
-    ['震动', present(payload.hp) ? Number(payload.hp) === 1 : Boolean(payload.haptic_ready)]
+    ['运动', hasAny(payload, ['motion', 'mo', 'ax', 'ay', 'az'])],
+    ['压力', hasAny(payload, ['pr', 'pl', 'pressure'])],
+    ['震动', hasAny(payload, ['hp', 'haptic_ready'])]
   ];
   var ok = [];
   var missing = [];
@@ -399,6 +408,9 @@ Page({
 
   handleNotifyMessage: function (result) {
     var rawText = arrayBufferToString(result.value);
+    if (this.notifyBuffer && rawText.charAt(0) === '{') {
+      this.notifyBuffer = '';
+    }
     var batch = takeJsonMessages(this.notifyBuffer, rawText);
     var self = this;
     this.notifyBuffer = batch.rest.slice(-2048);
@@ -406,7 +418,7 @@ Page({
     if (!batch.messages.length) {
       this.setData({
         lastEventRaw: '接收分片: ' + this.notifyBuffer,
-        connectionStatus: '正在接收硬件数据'
+        connectionStatus: this.notifyBuffer.length > 160 ? '硬件通知被截断，需更新固件分片发送' : '正在接收硬件数据'
       });
       return;
     }
@@ -423,18 +435,26 @@ Page({
         return;
       }
 
+      var eventType = payload.event_type || payload.t || '';
+      var calibrationRunning = present(payload.cg)
+        ? Number(payload.cg) === 1
+        : Boolean(payload.calibration_running);
+      if (eventType === 'cal_done' || eventType === 'calibration_done') {
+        calibrationRunning = false;
+      }
+
       self.setData({
         pressCount: Number(payload.press_count || payload.bc || self.data.pressCount || 0),
         breathRunning: present(payload.bg) ? Number(payload.bg) === 1 : Boolean(payload.breath_enabled),
-        calibrationRunning: present(payload.cg) ? Number(payload.cg) === 1 : Boolean(payload.calibration_running),
-        hapticReady: present(payload.hp) ? Number(payload.hp) === 1 : Boolean(payload.haptic_ready),
-        signalStatus: buildSignalSummary(payload).text,
+        calibrationRunning: calibrationRunning,
+        hapticReady: hasAny(payload, ['hp', 'haptic_ready']),
+        signalStatus: eventType === 'cal_done' || eventType === 'calibration_done' ? '基础校准完成，数据链路已解析' : buildSignalSummary(payload).text,
         lastEventTime: new Date().toLocaleString(),
         lastEventRaw: message,
         connectionStatus: '已收到硬件数据'
       });
 
-      if (payload.event_type === 'button_press') {
+      if (eventType === 'button_press') {
         self.submitEventToCloud(payload);
       }
     });
@@ -445,10 +465,10 @@ Page({
     wx.cloud.callFunction({
       name: 'link_test_ingest',
       data: {
-        device_id: eventPayload.device_id,
-        event_type: eventPayload.event_type,
-        press_count: eventPayload.press_count,
-        device_timestamp: eventPayload.device_timestamp,
+        device_id: eventPayload.device_id || DEVICE_NAME_PREFIX,
+        event_type: eventPayload.event_type || eventPayload.t || 'button_press',
+        press_count: eventPayload.press_count || eventPayload.bc || 0,
+        device_timestamp: eventPayload.device_timestamp || eventPayload.ts,
         miniapp_timestamp: Date.now()
       },
       success: function (result) {

@@ -20,6 +20,8 @@ constexpr uint32_t kDebounceMs = 180;
 constexpr uint32_t kTelemetryMs = 1000;
 constexpr uint32_t kBreathStepMs = 120;
 constexpr uint32_t kCalibrationMs = 12000;
+constexpr size_t kNotifyChunkBytes = 18;
+constexpr uint32_t kNotifyChunkGapMs = 12;
 
 BLECharacteristic* eventCharacteristic = nullptr;
 BLECharacteristic* commandCharacteristic = nullptr;
@@ -33,6 +35,7 @@ bool lastStableButtonState = HIGH;
 bool lastRawButtonState = HIGH;
 uint32_t pressCount = 0;
 uint32_t breathStep = 0;
+uint32_t telemetrySeq = 0;
 uint32_t calibrationStartedAtMs = 0;
 uint32_t lastDebounceAtMs = 0;
 uint32_t lastAdvertiseLogAtMs = 0;
@@ -46,8 +49,12 @@ String jsonPair(const char* key, const String& value) {
 void notifyJson(const String& payload) {
   Serial.println("[BLE] " + payload);
   if (eventCharacteristic != nullptr && isClientConnected) {
-    eventCharacteristic->setValue(payload.c_str());
-    eventCharacteristic->notify();
+    for (size_t offset = 0; offset < payload.length(); offset += kNotifyChunkBytes) {
+      const String chunk = payload.substring(offset, offset + kNotifyChunkBytes);
+      eventCharacteristic->setValue(chunk.c_str());
+      eventCharacteristic->notify();
+      delay(kNotifyChunkGapMs);
+    }
   }
 }
 
@@ -64,19 +71,41 @@ void stopFeedback() {
   setMotor(0);
 }
 
+String compactType(const char* eventType) {
+  const String type = String(eventType);
+  if (type == "telemetry") {
+    return "tel";
+  }
+  if (type == "calibration_started") {
+    return "cal_start";
+  }
+  if (type == "calibration_done") {
+    return "cal_done";
+  }
+  if (type == "breath_started") {
+    return "breath_start";
+  }
+  if (type == "breath_stopped") {
+    return "breath_stop";
+  }
+  return type;
+}
+
 String buildStatusJson(const char* eventType) {
+  const String type = compactType(eventType);
   String payload = "{";
-  payload += jsonPair("event_type", eventType) + ",";
-  payload += jsonPair("device_id", kDeviceName) + ",";
-  payload += "\"press_count\":";
+  payload += jsonPair("t", type) + ",";
+  payload += "\"seq\":";
+  payload += String(++telemetrySeq);
+  payload += ",\"bc\":";
   payload += String(pressCount);
-  payload += ",\"breath_enabled\":";
-  payload += breathEnabled ? "true" : "false";
-  payload += ",\"calibration_running\":";
-  payload += calibrationRunning ? "true" : "false";
-  payload += ",\"haptic_ready\":";
-  payload += hapticReady ? "true" : "false";
-  payload += ",\"device_timestamp\":";
+  payload += ",\"bg\":";
+  payload += breathEnabled ? "1" : "0";
+  payload += ",\"cg\":";
+  payload += calibrationRunning ? "1" : "0";
+  payload += ",\"hp\":";
+  payload += hapticReady ? "1" : "0";
+  payload += ",\"ts\":";
   payload += String(millis());
   payload += "}";
   return payload;
