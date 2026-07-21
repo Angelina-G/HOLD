@@ -273,6 +273,7 @@ Page({
       wx.onBLEConnectionStateChange(function (result) {
         holdLog('CONNECTION_STATE', result);
         if (result.deviceId === self.data.deviceId && !result.connected) {
+          clearTimeout(self.calibrationTimeout);
           self.connecting = false;
           if (self.app && self.app.globalData) {
             self.app.globalData.bleSession = null;
@@ -284,10 +285,15 @@ Page({
             serviceId: '',
             eventCharacteristicId: '',
             commandCharacteristicId: '',
-            canSendCommand: false
+            canSendCommand: false,
+            calibrationRunning: false
           });
           if (self.pageVisible) {
-            self.setData({ connectionStatus: '设备连接已断开', canSendCommand: false });
+            self.setData({
+              connectionStatus: '设备连接已断开',
+              signalStatus: '校准已停止：蓝牙连接中断',
+              calibrationGuide: '请重新连接设备后再开始基础校准。'
+            });
           }
         }
       });
@@ -337,6 +343,7 @@ Page({
 
   onUnload: function () {
     this.pageVisible = false;
+    clearTimeout(this.calibrationTimeout);
     this.stopDiscovery();
   },
 
@@ -595,6 +602,7 @@ Page({
   },
 
   startCalibration: function () {
+    clearTimeout(this.calibrationTimeout);
     this.setData({
       signalStatus: '正在发送校准命令',
       calibrationGuide: '请保持坐姿稳定，不要说话或大幅移动，等待设备震动提示。'
@@ -606,6 +614,14 @@ Page({
           signalStatus: '校准命令已发送，等待硬件回传',
           calibrationGuide: '校准中：保持佩戴贴合，自然呼吸 10-15 秒；完成后这里会显示结果。'
         });
+        this.calibrationTimeout = setTimeout(function () {
+          if (!this.data.calibrationRunning) return;
+          this.setData({
+            calibrationRunning: false,
+            signalStatus: '校准已超时：未收到硬件结束通知',
+            calibrationGuide: '请查看实时指标：若 PPG、运动或压力仍为“未就绪”，请检查对应传感器；若数据正常，请重新连接后再校准。'
+          });
+        }.bind(this), 18000);
       }.bind(this),
       fail: function (error) {
         this.setData({
@@ -656,6 +672,7 @@ Page({
         ? Number(payload.cg) === 1
         : Boolean(payload.calibration_running);
       if (eventType === 'cal_done' || eventType === 'calibration_done') {
+        clearTimeout(self.calibrationTimeout);
         calibrationRunning = false;
       }
 
@@ -683,6 +700,8 @@ Page({
       }
 
       if (self.pageVisible) {
+        var signalSummary = buildSignalSummary(payload);
+        var calibrationDone = eventType === 'cal_done' || eventType === 'calibration_done';
         self.setData({
           pressCount: Number(payload.press_count || payload.bc || self.data.pressCount || 0),
           breathRunning: present(payload.bg) ? Number(payload.bg) === 1 : Boolean(payload.breath_enabled),
@@ -697,11 +716,13 @@ Page({
           ppgRed: present(payload.red) ? payload.red : '--',
           bodyTemperature: Number(payload.mr || 0) === 1 && present(payload.bt) ? payload.bt : '--',
           wearState: present(payload.wear) ? (Number(payload.wear) === 1 ? '已佩戴' : '未佩戴') : '等待数据',
-          signalStatus: eventType === 'cal_done' || eventType === 'calibration_done'
-            ? '基础校准完成，数据链路已解析；呼吸：' + breathDetectorText(payload)
-            : buildSignalSummary(payload).text + '；呼吸：' + breathDetectorText(payload),
-          calibrationGuide: eventType === 'cal_done' || eventType === 'calibration_done'
-            ? '校准完成：现在可以看实时波形，或开始一次呼吸引导做前后对比。'
+          signalStatus: calibrationDone
+            ? (signalSummary.okCount === 5 ? '校准完成，5/5 信号正常' : '校准已结束，但' + signalSummary.text)
+            : signalSummary.text + '；呼吸：' + breathDetectorText(payload),
+          calibrationGuide: calibrationDone
+            ? (signalSummary.okCount === 5
+              ? '校准成功：现在可以开始测试或呼吸引导。'
+              : '校准未完全通过。请按上方“缺少”项检查佩戴或对应传感器，然后重新校准。')
             : (calibrationRunning ? '校准中：继续自然呼吸，尽量不要移动设备。' : self.data.calibrationGuide),
           lastEventTime: new Date().toLocaleString(),
           lastEventRaw: message,
@@ -837,6 +858,7 @@ Page({
 
   disconnectDevice: function () {
     var self = this;
+    clearTimeout(this.calibrationTimeout);
     this.connecting = false;
     this.stopDiscovery();
     if (!this.data.deviceId) {

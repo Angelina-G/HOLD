@@ -518,7 +518,7 @@ void notifyBleWave() {
 }
 
 void notifyCalibrationDoneBurst() {
-  const String payload = "{\"t\":\"cal_done\",\"cc\":1}";
+  const String payload = buildBleStatusJson("calibration_done");
   for (uint8_t index = 0; index < 3; ++index) {
     notifyBlePayload(payload);
     delay(35);
@@ -1007,10 +1007,6 @@ void pollPressure() {
 }
 
 void updateHapticPattern(unsigned long nowMs) {
-  if (!hapticReady) {
-    return;
-  }
-
   if (calibrationRunning) {
     if (nowMs - calibrationStartedAtMs >= kCalibrationDurationMs) {
       stopGuidedFeedback();
@@ -1018,6 +1014,21 @@ void updateHapticPattern(unsigned long nowMs) {
       notifyCalibrationDoneBurst();
       return;
     }
+  }
+
+  if (breathGuideEnabled && breathGuideStartedAtMs > 0 &&
+      nowMs - breathGuideStartedAtMs >= kBreathGuideDurationMs) {
+    stopGuidedFeedback();
+    notifyBleStatus("breath_stopped");
+    return;
+  }
+
+  // Timers must finish even when DRV2605L is unavailable.
+  if (!hapticReady) {
+    return;
+  }
+
+  if (calibrationRunning) {
 
     if (nowMs - lastHapticToggleAtMs < kCalibrationPulseMs) {
       return;
@@ -1029,11 +1040,6 @@ void updateHapticPattern(unsigned long nowMs) {
   }
 
   if (breathGuideEnabled) {
-    if (breathGuideStartedAtMs > 0 && nowMs - breathGuideStartedAtMs >= kBreathGuideDurationMs) {
-      stopGuidedFeedback();
-      notifyBleStatus("breath_stopped");
-      return;
-    }
     if (nowMs - lastHapticToggleAtMs < kBreathHapticStepMs) {
       return;
     }

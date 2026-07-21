@@ -34,7 +34,8 @@ const context = {
   Number,
   Boolean,
   String,
-  setTimeout() {}
+  setTimeout() {},
+  clearTimeout() {}
 };
 
 vm.runInNewContext(fs.readFileSync('web/pages/index/index.js', 'utf8'), context);
@@ -93,6 +94,12 @@ feed({ t: 'b_stop', reason: 'user' });
 assert.equal(archiveCount, 1);
 assert.ok(storage.hold_telemetry_samples.some((sample) => sample.payload.t === 'b_start'));
 assert.ok(storage.hold_telemetry_samples.some((sample) => sample.payload.t === 'b_stop'));
+
+page.data.calibrationRunning = true;
+feed({ t: 'cal_done', cg: 0, cc: 1, pp: 0, p57: 0, mr: 1, ps: 1, hp: 1, wear: 0 });
+assert.equal(page.data.calibrationRunning, false);
+assert.ok(page.data.signalStatus.includes('校准已结束'));
+assert.ok(page.data.signalStatus.includes('PPG'));
 
 page.pageVisible = false;
 feed({ t: 'tel', seq: 99, pp: 1, mr: 1, mo: 'still', ps: 1, hp: 1, wear: 1, hr: 73, br: 14, ir: 124000, red: 46000, pr: 900 });
