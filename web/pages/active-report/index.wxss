@@ -18,7 +18,7 @@
 .report-hero {
   padding: 30rpx;
   background: linear-gradient(135deg, #f59b88 0%, #b89af6 100%);
-  color: #fffaf7;
+  color: #332a31;
 }
 
 .report-tag {
@@ -41,7 +41,7 @@
 .report-subtitle {
   margin-top: 12rpx;
   font-size: 24rpx;
-  color: rgba(255, 250, 247, 0.86);
+  color: #5d535b;
 }
 
 .report-panel {
@@ -79,6 +79,45 @@
   margin-top: 8rpx;
   font-size: 22rpx;
   color: #81747d;
+}
+
+.readiness-line,
+.comparison-copy,
+.comparison-note {
+  margin-top: 14rpx;
+  color: #5d535b;
+  font-size: 24rpx;
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+}
+
+.comparison-panel.peace {
+  background: linear-gradient(135deg, rgba(227, 247, 240, 0.96), rgba(224, 240, 250, 0.96));
+}
+
+.comparison-panel.anxious {
+  background: linear-gradient(135deg, rgba(255, 239, 229, 0.96), rgba(255, 226, 232, 0.96));
+}
+
+.comparison-state {
+  margin-top: 16rpx;
+  color: #332a31;
+  font-size: 30rpx;
+  font-weight: 700;
+}
+
+.comparison-values {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12rpx;
+  margin-top: 16rpx;
+  color: #51464e;
+  font-size: 24rpx;
+}
+
+.comparison-note {
+  color: #81747d;
+  font-size: 21rpx;
 }
 
 .wave-grid {
@@ -134,4 +173,33 @@
   font-size: 24rpx;
   line-height: 1.8;
   color: #5d535b;
+}
+
+.empty-report {
+  margin-top: 30vh;
+  text-align: center;
+}
+
+.history-button {
+  min-height: 82rpx;
+  margin-top: 24rpx;
+  border-radius: 16rpx;
+  background: #40343f;
+  color: #fffaf8;
+  font-size: 26rpx;
+}
+
+@media (max-width: 360px) {
+  .metrics-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .comparison-values {
+    grid-template-columns: 1fr;
+  }
+
+  .report-metric-value {
+    font-size: 25rpx;
+    overflow-wrap: anywhere;
+  }
 }

@@ -1,0 +1,89 @@
+<view class="test-page">
+  <view class="test-head">
+    <view class="step-label">{{stepLabel}}</view>
+    <view class="mode-pill">{{ppgModeLabel}}</view>
+    <view class="test-title">{{title}}</view>
+    <view class="test-copy">{{instruction}}</view>
+  </view>
+
+  <view class="signal-band {{signalGood ? 'good' : 'waiting'}}" wx:if="{{stage !== 'result'}}">
+    <view class="signal-dot"></view>
+    <view class="signal-text">
+      <view class="signal-title">{{signalLabel}}</view>
+      <view class="signal-detail">{{signalDetail}}</view>
+    </view>
+    <view class="signal-values">
+      <text>{{heartRate}} bpm</text>
+      <text>{{breathRate}} 次/分</text>
+    </view>
+  </view>
+
+  <view class="stage-panel" wx:if="{{stage === 'ready'}}">
+    <view class="subjective-title">此刻紧张感</view>
+    <view class="subjective-scale"><text>0 平静</text><text>{{subjectiveBefore}}</text><text>10 强烈</text></view>
+    <slider min="0" max="10" step="1" value="{{subjectiveBefore}}" activeColor="#d77e75" backgroundColor="#eadfe5" bindchange="onBeforeChange"/>
+    <button class="primary-action" wx:if="{{connected}}" disabled="{{!signalGood}}" bindtap="startBaseline">开始测试</button>
+    <button class="primary-action" wx:else bindtap="openDebugPage">连接 HOLD</button>
+    <view class="action-note">测试包含 30 秒基线、60 秒引导和 30 秒恢复。</view>
+  </view>
+
+  <view class="stage-panel timed" wx:if="{{stage === 'baseline' || stage === 'recovery'}}">
+    <view class="countdown">{{secondsLeft}}</view>
+    <view class="countdown-unit">秒</view>
+    <view class="progress-track"><view class="progress-fill" style="width: {{progress}}%"></view></view>
+    <view class="still-cue">放松肩膀 · 保持静止 · 自然呼吸</view>
+  </view>
+
+  <view class="stage-panel" wx:if="{{stage === 'guideReady'}}">
+    <view class="guide-ready-mark">基线已记录</view>
+    <view class="guide-ready-copy">接下来震动增强时吸气，震动减弱时呼气。随时可以停止。</view>
+    <button class="primary-action" loading="{{busy}}" bindtap="startGuide">开始 1 分钟引导</button>
+  </view>
+
+  <view class="guide-stage" wx:if="{{stage === 'guide'}}">
+    <view class="breath-disc {{guidePhaseClass}}">
+      <view class="phase-name">{{guidePhase}}</view>
+      <view class="phase-time">{{secondsLeft}} 秒</view>
+    </view>
+    <view class="phase-key">
+      <view><text class="key-line strong"></text>增强 = 吸气</view>
+      <view><text class="key-line soft"></text>减弱 = 呼气</view>
+    </view>
+    <button class="stop-action" loading="{{busy}}" bindtap="stopGuide">提前结束</button>
+  </view>
+
+  <view class="stage-panel" wx:if="{{stage === 'rateAfter'}}">
+    <view class="subjective-title">现在的紧张感</view>
+    <view class="subjective-scale"><text>0 平静</text><text>{{subjectiveAfter}}</text><text>10 强烈</text></view>
+    <slider min="0" max="10" step="1" value="{{subjectiveAfter}}" activeColor="#6ca9a1" backgroundColor="#dce9e6" bindchange="onAfterChange"/>
+    <button class="primary-action" bindtap="finishTest">生成前后对比</button>
+  </view>
+
+  <view class="result-panel {{resultTone}}" wx:if="{{stage === 'result'}}">
+    <view class="result-kicker">本次体验结果</view>
+    <view class="result-title">{{subjectiveResult}}</view>
+    <view class="subjective-compare">
+      <view><text class="compare-number">{{subjectiveBefore}}</text><text>引导前</text></view>
+      <view class="compare-arrow">→</view>
+      <view><text class="compare-number">{{subjectiveAfter}}</text><text>引导后</text></view>
+    </view>
+
+    <view class="physiology" wx:if="{{comparison && comparison.ready}}">
+      <view class="physiology-title">生理指标方向</view>
+      <view class="physiology-state">{{comparison.stateLabel}}</view>
+      <view class="metric-pairs">
+        <view wx:if="{{comparison.hasHeartRate}}"><text>心率</text><text>{{comparison.beforeHr}} → {{comparison.afterHr}} bpm</text></view>
+        <view wx:if="{{comparison.hasRespiration}}"><text>呼吸</text><text>{{comparison.beforeBr}} → {{comparison.afterBr}} 次/分</text></view>
+      </view>
+      <view class="confidence">{{comparison.confidenceLabel}} · {{comparison.validSampleLabel}}</view>
+    </view>
+    <view class="physiology waiting-result" wx:else>生理数据覆盖不足，本次只保留主观反馈；请减少动作后再测一次。</view>
+
+    <view class="result-actions">
+      <button class="primary-action" wx:if="{{resultMeasurementId}}" bindtap="openReport">查看完整记录</button>
+      <button class="secondary-action" bindtap="restart">再测一次</button>
+    </view>
+  </view>
+
+  <view class="error-text" wx:if="{{errorText}}">{{errorText}}</view>
+</view>

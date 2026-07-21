@@ -1,4 +1,11 @@
-<view class="report-page" wx:if="{{report}}">
+<view class="report-page">
+  <view class="report-panel empty-report" wx:if="{{!report}}">
+    <view class="panel-title">这份报告暂时不可用</view>
+    <view class="section-text">记录可能仍在形成，或已经超过本地保留范围。</view>
+    <button class="history-button" bindtap="backToHistory">返回检测历史</button>
+  </view>
+
+  <block wx:if="{{report}}">
   <view class="report-hero">
     <view class="report-tag">{{report.resultTag}}</view>
     <view class="report-title">{{report.title}}</view>
@@ -17,8 +24,24 @@
     </view>
   </view>
 
+  <view class="report-panel" wx:if="{{report.readiness}}">
+    <view class="panel-title">当时传感器状态</view>
+    <view class="readiness-line">PPG {{report.readiness.ppg ? '就绪' : '未就绪'}} · IMU {{report.readiness.imu ? '就绪' : '未就绪'}} · 压力 {{report.readiness.pressure ? '就绪' : '未就绪'}} · 震动 {{report.readiness.haptic ? '就绪' : '未就绪'}}</view>
+  </view>
+
+  <view class="report-panel comparison-panel {{report.comparison.tone}}" wx:if="{{report.comparison}}">
+    <view class="panel-title">本次变化指数 · 非医学评估</view>
+    <view class="comparison-state">{{report.comparison.stateLabel}}<text wx:if="{{report.comparison.hasCompositeScore}}"> {{report.comparison.score}}/100</text></view>
+    <view class="comparison-values" wx:if="{{report.comparison.ready}}">
+      <view wx:if="{{report.comparison.hasHeartRate}}">心率 {{report.comparison.beforeHr}} → {{report.comparison.afterHr}} bpm · 变化 {{report.comparison.hrDeltaLabel}}</view>
+      <view wx:if="{{report.comparison.hasRespiration}}">呼吸 {{report.comparison.beforeBr}} → {{report.comparison.afterBr}} 次/分 · 变化 {{report.comparison.brDeltaLabel}}</view>
+    </view>
+    <view class="comparison-copy">{{report.comparison.verdict}}</view>
+    <view class="comparison-note" wx:if="{{report.comparison.ready}}">{{report.comparison.confidenceLabel}} · {{report.comparison.validSampleLabel}}</view>
+  </view>
+
   <view class="report-panel">
-    <view class="panel-title">实时波形摘要</view>
+    <view class="panel-title">{{report.waveformSource || '遥测波形摘要'}}</view>
     <view class="wave-grid">
       <block wx:for="{{report.waveformMoments}}" wx:key="label">
         <view class="wave-col">
@@ -40,4 +63,5 @@
       </view>
     </block>
   </view>
+  </block>
 </view>

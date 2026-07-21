@@ -1,7 +1,7 @@
 <view class="daily-page" wx:if="{{activeDay}}">
   <view class="daily-hero">
     <view class="hero-title">当日呼吸与心跳分析</view>
-    <view class="hero-subtitle">以天为单位查看摘要结果；连接设备时，今日数据会随硬件遥测自动更新。</view>
+    <view class="hero-subtitle">查看今日近期有效数据；连接设备时，数值和趋势会随硬件遥测自动更新。</view>
   </view>
 
   <scroll-view class="day-tabs" scroll-x="true" enable-flex="true">
@@ -26,13 +26,38 @@
     </view>
     <view class="stat-card stable">
       <view class="stat-value">{{activeDay.stabilityScore}}</view>
-      <view class="stat-unit">/100</view>
+      <view class="stat-unit" wx:if="{{activeDay.stabilityScore != '--'}}">/100</view>
       <view class="stat-label">数据完整度</view>
     </view>
   </view>
 
+  <view class="comparison-panel {{activeDay.comparison.tone}}" wx:if="{{activeDay.comparison}}">
+    <view class="comparison-heading">
+      <view>
+      <view class="comparison-eyebrow">本次变化指数 · 非医学评估</view>
+        <view class="panel-title">{{activeDay.comparison.stateLabel}}</view>
+      </view>
+      <view class="comparison-score" wx:if="{{activeDay.comparison.hasCompositeScore}}">{{activeDay.comparison.score}}<text>/100</text></view>
+    </view>
+    <view class="before-after-grid" wx:if="{{activeDay.comparison.ready}}">
+      <view class="period-card before">
+        <view class="period-name">引导前 · 基线</view>
+        <view class="period-value">{{activeDay.comparison.beforeHr}} <text>bpm</text></view>
+        <view class="period-value secondary">{{activeDay.comparison.beforeBr}} <text>次/分</text></view>
+      </view>
+      <view class="period-card after {{activeDay.comparison.tone}}">
+        <view class="period-name">引导后 · {{activeDay.comparison.stateLabel}}</view>
+        <view class="period-value">{{activeDay.comparison.afterHr}} <text>bpm</text></view>
+        <view class="period-value secondary">{{activeDay.comparison.afterBr}} <text>次/分</text></view>
+      </view>
+    </view>
+    <view class="period-delta" wx:if="{{activeDay.comparison.ready}}">心率变化 {{activeDay.comparison.hrDeltaLabel}} · 呼吸变化 {{activeDay.comparison.brDeltaLabel}}</view>
+    <view class="comparison-copy">{{activeDay.comparison.verdict}}</view>
+  <view class="comparison-fineprint" wx:if="{{activeDay.comparison.ready}}">{{activeDay.comparison.confidenceLabel}} · {{activeDay.comparison.validSampleLabel}}，该结果不是医学诊断。</view>
+  </view>
+
   <view class="chart-panel">
-    <view class="panel-title">呼吸趋势</view>
+    <view class="panel-title">呼吸相对趋势 · 自动缩放</view>
     <view class="bars-row">
       <block wx:for="{{activeDay.respirationBars}}" wx:key="index">
         <view class="bar-slot">
@@ -43,7 +68,7 @@
   </view>
 
   <view class="chart-panel">
-    <view class="panel-title">心率趋势</view>
+    <view class="panel-title">心率相对趋势 · 自动缩放</view>
     <view class="bars-row">
       <block wx:for="{{activeDay.heartRateBars}}" wx:key="index">
         <view class="bar-slot">

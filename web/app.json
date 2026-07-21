@@ -1,6 +1,7 @@
 {
   "pages": [
     "pages/home/index",
+    "pages/user-test/index",
     "pages/active-history/index",
     "pages/active-report/index",
     "pages/daily-analysis/index",

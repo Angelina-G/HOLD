@@ -11,6 +11,15 @@ Page({
 
   onShow() {
     this.refreshRecords();
+    this.refreshTimer = setInterval(() => this.refreshRecords(), 1000);
+  },
+
+  onHide() {
+    clearInterval(this.refreshTimer);
+  },
+
+  onUnload() {
+    clearInterval(this.refreshTimer);
   },
 
   refreshRecords() {

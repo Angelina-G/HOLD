@@ -73,7 +73,7 @@
 
 .day-tab.active .day-tab-date,
 .day-tab.active .day-tab-label {
-  color: #fffaf7;
+  color: #332a31;
 }
 
 .stats-grid {
@@ -126,6 +126,124 @@
 .chart-panel {
   margin-top: 22rpx;
   padding: 28rpx;
+}
+
+.comparison-panel {
+  margin-top: 22rpx;
+  padding: 28rpx;
+  border: 2rpx solid #e7dfe5;
+  border-radius: 26rpx;
+  background: #faf8f8;
+}
+
+.comparison-panel.peace {
+  border-color: #b9ddd5;
+  background: #eef8f5;
+}
+
+.comparison-panel.anxious {
+  border-color: #f0c0ae;
+  background: #fff2ec;
+}
+
+.comparison-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20rpx;
+}
+
+.comparison-eyebrow {
+  margin-bottom: 8rpx;
+  color: #756a73;
+  font-size: 20rpx;
+}
+
+.comparison-score {
+  flex: 0 0 auto;
+  color: #315f5b;
+  font-size: 40rpx;
+  font-weight: 700;
+}
+
+.comparison-panel.anxious .comparison-score {
+  color: #a65340;
+}
+
+.comparison-score text {
+  font-size: 20rpx;
+  font-weight: 500;
+}
+
+.before-after-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16rpx;
+  margin-top: 22rpx;
+}
+
+.period-card {
+  min-width: 0;
+  padding: 20rpx;
+  border-radius: 18rpx;
+}
+
+.period-card.before {
+  background: #f1edf4;
+}
+
+.period-card.after.peace {
+  background: #e6f4f1;
+}
+
+.period-card.after.anxious {
+  background: #ffe8df;
+}
+
+.period-card.after.neutral {
+  background: #f1edf4;
+}
+
+.period-name {
+  color: #756a73;
+  font-size: 20rpx;
+}
+
+.period-value {
+  margin-top: 12rpx;
+  color: #332a31;
+  font-size: 34rpx;
+  font-weight: 700;
+}
+
+.period-value.secondary {
+  margin-top: 8rpx;
+  font-size: 28rpx;
+}
+
+.period-value text {
+  font-size: 20rpx;
+  font-weight: 400;
+}
+
+.period-delta {
+  margin-top: 12rpx;
+  color: #756a73;
+  font-size: 19rpx;
+  line-height: 1.45;
+}
+
+.comparison-copy {
+  margin-top: 18rpx;
+  color: #4f464d;
+  font-size: 24rpx;
+  line-height: 1.65;
+}
+
+.comparison-fineprint {
+  margin-top: 8rpx;
+  color: #756a73;
+  font-size: 20rpx;
 }
 
 .panel-title {
@@ -208,4 +326,19 @@
   flex: 1;
   font-size: 24rpx;
   color: #5d535b;
+}
+
+@media (max-width: 360px) {
+  .stats-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .before-after-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .comparison-heading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
 }

@@ -1,0 +1,12 @@
+{
+  "appid": "wxfa0d59d81b76a71a",
+  "compileType": "miniprogram",
+  "miniprogramRoot": "web/",
+  "cloudfunctionRoot": "web/cloudfunctions/",
+  "libVersion": "3.16.1",
+  "setting": {
+    "es6": true,
+    "postcss": true,
+    "minified": true
+  }
+}

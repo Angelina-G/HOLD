@@ -1,313 +1,411 @@
-const activeMeasurements = [
+const TELEMETRY_KEY = 'hold_telemetry_samples';
+const RECORDS_KEY = 'hold_measurement_records';
+const WAVE_KEY = 'hold_wave_samples';
+const SESSION_GAP_MS = 15000;
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+const demoMeasurements = [
   {
-    id: 'ppg-20260625-001',
-    title: '指部主动检测',
-    startedAt: '2026-06-25 21:08',
-    durationLabel: '68 秒',
-    resultTag: '状态平稳',
-    summary: '本次指部 PPG 检测节律较稳定，建议继续保持相同贴合方式复测。',
+    id: 'ppg-demo-001',
+    title: 'HOLD 实时采集记录',
+    startedAt: '--',
+    durationLabel: '--',
+    resultTag: '等待真实数据',
+    summary: '连接设备后，这里会按 GitHub 最新版的摘要结构显示真实遥测。',
     metrics: [
-      { label: '平均心率', value: '74', unit: 'bpm' },
-      { label: '节律稳定度', value: '88', unit: '/100' },
-      { label: '信号质量', value: '良好', unit: '' }
+      { label: '平均心率', value: '--', unit: 'bpm' },
+      { label: '平均呼吸', value: '--', unit: '次/分' },
+      { label: '信号质量', value: '等待', unit: '' }
     ],
-    waveformMoments: [
-      { label: '启动', value: 32 },
-      { label: '10秒', value: 68 },
-      { label: '20秒', value: 82 },
-      { label: '30秒', value: 74 },
-      { label: '40秒', value: 86 },
-      { label: '结束', value: 78 }
-    ],
+    waveformSource: '等待实时波形',
+    waveformMoments: emptyBars(6),
+    readiness: { ppg: false, imu: false, pressure: false, haptic: false },
+    comparison: pendingComparison(),
     reportSections: [
-      {
-        heading: '结果摘要',
-        text: '本次主动检测已成功形成完整节律片段，当前趋势更适合作为基线样本，不提示明显异常。'
-      },
-      {
-        heading: '参数观察',
-        text: '心率均值处于日常静息区间，节律波动不大，信号质量较好，适合作为后续模型侧对照样本。'
-      },
-      {
-        heading: '建议',
-        text: '保持同一手指、同一按压方式和坐姿，再补一到两次同条件检测，可提升报告对比价值。'
-      }
-    ]
-  },
-  {
-    id: 'ppg-20260624-002',
-    title: '指部主动检测',
-    startedAt: '2026-06-24 20:31',
-    durationLabel: '61 秒',
-    resultTag: '轻微波动',
-    summary: '检测期间存在一次短暂姿态变化，结果可参考但不建议直接作为最佳基线。',
-    metrics: [
-      { label: '平均心率', value: '79', unit: 'bpm' },
-      { label: '节律稳定度', value: '74', unit: '/100' },
-      { label: '信号质量', value: '中等', unit: '' }
-    ],
-    waveformMoments: [
-      { label: '启动', value: 28 },
-      { label: '10秒', value: 58 },
-      { label: '20秒', value: 62 },
-      { label: '30秒', value: 51 },
-      { label: '40秒', value: 69 },
-      { label: '结束', value: 60 }
-    ],
-    reportSections: [
-      {
-        heading: '结果摘要',
-        text: '本次检测可以用于回看波形与触发点，但中段存在短暂扰动，结论可信度弱于稳定测量。'
-      },
-      {
-        heading: '参数观察',
-        text: '节律总体可识别，但局部信号质量下降，建议结合原始波形一起看。'
-      },
-      {
-        heading: '建议',
-        text: '后续主动检测开始后尽量减少手指微动，并维持固定按压深度。'
-      }
-    ]
-  },
-  {
-    id: 'ppg-20260623-003',
-    title: '指部主动检测',
-    startedAt: '2026-06-23 15:37',
-    durationLabel: '60 秒',
-    resultTag: '可作对照',
-    summary: '这是一份较早的稳定手指数据，可继续作为胸口模式对比参考。',
-    metrics: [
-      { label: '平均心率', value: '72', unit: 'bpm' },
-      { label: '节律稳定度', value: '83', unit: '/100' },
-      { label: '信号质量', value: '良好', unit: '' }
-    ],
-    waveformMoments: [
-      { label: '启动', value: 30 },
-      { label: '10秒', value: 61 },
-      { label: '20秒', value: 77 },
-      { label: '30秒', value: 72 },
-      { label: '40秒', value: 79 },
-      { label: '结束', value: 76 }
-    ],
-    reportSections: [
-      {
-        heading: '结果摘要',
-        text: '这次结果适合作为手指模式基础样本，用来对比后续参数迭代。'
-      },
-      {
-        heading: '参数观察',
-        text: '整体节律较稳定，波形完整，适合作为首轮展示结果。'
-      },
-      {
-        heading: '建议',
-        text: '后续可以继续在该口径下补不同时间段数据，形成更完整历史。'
-      }
+      { heading: '链路状态', text: '还没有可用于报告的真实遥测。' },
+      { heading: '建议', text: '先进入调试页连接设备，再保持稳定佩戴。' }
     ]
   }
 ];
 
-const dailyAnalyses = [
-  {
-    day: '06-25',
-    title: '今日分析',
-    respirationAvg: 15,
-    heartRateAvg: 76,
-    stabilityScore: 84,
-    alertCount: 1,
-    insight: '呼吸节律平稳，心率位于常见静息区间，晚间检测信号质量优于白天。',
-    respirationBars: [52, 58, 54, 61, 57, 63, 59],
-    heartRateBars: [68, 71, 74, 76, 73, 78, 75],
-    timeline: [
-      { time: '09:00', label: '上午稳定', tone: 'soft' },
-      { time: '14:20', label: '心率轻升', tone: 'warm' },
-      { time: '21:10', label: '主动检测完成', tone: 'strong' }
-    ]
-  },
-  {
-    day: '06-24',
-    title: '昨日分析',
-    respirationAvg: 16,
-    heartRateAvg: 79,
-    stabilityScore: 71,
-    alertCount: 2,
-    insight: '白天存在姿态变化带来的局部波动，夜间段整体恢复稳定。',
-    respirationBars: [48, 50, 62, 59, 55, 53, 57],
-    heartRateBars: [72, 74, 83, 85, 80, 77, 76],
-    timeline: [
-      { time: '10:40', label: '呼吸波动', tone: 'warm' },
-      { time: '16:30', label: '短时扰动', tone: 'warm' },
-      { time: '20:31', label: '主动检测', tone: 'strong' }
-    ]
-  },
-  {
-    day: '06-23',
-    title: '历史分析',
-    respirationAvg: 15,
-    heartRateAvg: 73,
-    stabilityScore: 80,
-    alertCount: 0,
-    insight: '整日趋势平缓，适合作为近期对照日。',
-    respirationBars: [51, 55, 57, 56, 58, 54, 52],
-    heartRateBars: [69, 71, 73, 72, 74, 73, 70],
-    timeline: [
-      { time: '11:00', label: '节律稳定', tone: 'soft' },
-      { time: '15:37', label: '手指样本采集', tone: 'strong' }
-    ]
+function storage(key, fallback) {
+  if (typeof wx === 'undefined' || !wx.getStorageSync) return fallback;
+  try {
+    const value = wx.getStorageSync(key);
+    return value || fallback;
+  } catch (error) {
+    return fallback;
   }
-];
-
-const homeOverview = {
-  recentAdviceTitle: '近期综合建议',
-  recentAdvice: '最近三次测量中，指部主动检测稳定性持续优于胸口模式。建议在等待物料阶段优先积累更多同条件指部基线数据，同时保留每日呼吸与心率摘要，后续再将胸口模式纳入联合分析。',
-  recommendationBullets: ['优先保留晚间稳定样本', '主动检测建议固定手指与按压方式', '胸口模式继续以算法摸底为主'],
-  readinessScore: 82,
-  trendSeries: [68, 72, 79, 76, 81, 84, 82]
-};
-
-function storedSamples() {
-  if (typeof wx === 'undefined' || !wx.getStorageSync) {
-    return [];
-  }
-  return wx.getStorageSync('hold_telemetry_samples') || [];
 }
 
-function positiveAverage(samples, key) {
-  const values = samples.map((item) => Number(item.payload[key] || 0)).filter((value) => value > 0);
-  if (!values.length) {
-    return 0;
-  }
-  return values.reduce((sum, value) => sum + value, 0) / values.length;
+function save(key, value) {
+  if (typeof wx === 'undefined' || !wx.setStorageSync) return;
+  try {
+    wx.setStorageSync(key, value);
+  } catch (error) {}
 }
 
-function recentSamples() {
-  const cutoff = Date.now() - 24 * 60 * 60 * 1000;
-  return storedSamples().filter((item) => item && item.payload && item.receivedAt >= cutoff);
+function now() {
+  return Date.now();
 }
 
-function currentSessionSamples() {
-  const samples = recentSamples();
-  let start = samples.length ? samples.length - 1 : 0;
-  while (start > 0 && samples[start].receivedAt - samples[start - 1].receivedAt <= 10000) {
-    start -= 1;
-  }
-  return samples.slice(start);
+function asMs(value) {
+  const ms = Number(value);
+  return Number.isFinite(ms) && ms > 0 ? ms : now();
 }
 
-function chartMoments(samples) {
-  if (!samples.length) {
-    return [];
+function formatDate(ms) {
+  if (!ms) return '--';
+  const date = new Date(ms);
+  const pad = (value) => String(value).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+function formatDay(ms) {
+  const date = new Date(ms || now());
+  return `${date.getMonth() + 1}-${date.getDate()}`;
+}
+
+function payloadOf(sample) {
+  if (!sample) return {};
+  return sample.payload || sample;
+}
+
+function sampleTime(sample) {
+  return asMs(sample && (sample.receivedAt || sample.ts || sample.time));
+}
+
+function telemetrySamples() {
+  const samples = storage(TELEMETRY_KEY, []);
+  return Array.isArray(samples) ? samples.filter(Boolean) : [];
+}
+
+function waveSamples() {
+  const samples = storage(WAVE_KEY, []);
+  return Array.isArray(samples) ? samples.filter(Boolean) : [];
+}
+
+function storedRecords() {
+  const records = storage(RECORDS_KEY, []);
+  return Array.isArray(records) ? records.filter(Boolean) : [];
+}
+
+function numberFrom(sample, key) {
+  const value = Number(payloadOf(sample)[key]);
+  return Number.isFinite(value) ? value : null;
+}
+
+function values(samples, key, min, max) {
+  return samples
+    .map((sample) => numberFrom(sample, key))
+    .filter((value) => value !== null && value >= min && value <= max);
+}
+
+function average(list) {
+  if (!list.length) return null;
+  return list.reduce((sum, value) => sum + value, 0) / list.length;
+}
+
+function displayNumber(value, digits) {
+  if (value === null || value === undefined || !Number.isFinite(Number(value))) return '--';
+  const number = Number(value);
+  return digits ? number.toFixed(digits) : String(Math.round(number));
+}
+
+function lastPayload(samples) {
+  return payloadOf(samples[samples.length - 1]);
+}
+
+function latestSession(samples) {
+  if (!samples.length) return [];
+  const sorted = samples.slice().sort((a, b) => sampleTime(a) - sampleTime(b));
+  const tail = [sorted[sorted.length - 1]];
+  for (let index = sorted.length - 2; index >= 0; index -= 1) {
+    const previous = tail[0];
+    if (sampleTime(previous) - sampleTime(sorted[index]) > SESSION_GAP_MS) break;
+    tail.unshift(sorted[index]);
   }
-  const indexes = [0, 1, 2, 3, 4, 5].map((step) => Math.min(samples.length - 1, Math.round(step * (samples.length - 1) / 5)));
-  const values = indexes.map((index) => Number(samples[index].payload.ir || samples[index].payload.pr || 0));
-  const min = Math.min.apply(null, values);
-  const max = Math.max.apply(null, values);
-  return values.map((value, index) => ({
-    label: index === 0 ? '开始' : index === 5 ? '当前' : `${index * 10}秒`,
-    value: max === min ? 50 : Math.round(30 + (value - min) * 60 / (max - min))
+  return tail;
+}
+
+function emptyBars(count) {
+  return Array.from({ length: count }, (_, index) => ({ label: index === 0 ? '开始' : index === count - 1 ? '当前' : `${index}`, value: 36 }));
+}
+
+function bucketAverages(list, count) {
+  if (!list.length) return [];
+  if (list.length <= count) return list.slice();
+  const buckets = [];
+  for (let index = 0; index < count; index += 1) {
+    const start = Math.floor(index * list.length / count);
+    const end = Math.max(start + 1, Math.floor((index + 1) * list.length / count));
+    buckets.push(average(list.slice(start, end)));
+  }
+  return buckets;
+}
+
+function normalizeHeights(list, minHeight, maxHeight) {
+  if (!list.length) return [];
+  const min = Math.min.apply(null, list);
+  const max = Math.max.apply(null, list);
+  const range = Math.max(max - min, 1);
+  return list.map((value) => Math.round(minHeight + (value - min) * (maxHeight - minHeight) / range));
+}
+
+function barsFromValues(list, count) {
+  const bucketed = bucketAverages(list, count);
+  const heights = normalizeHeights(bucketed, 32, 88);
+  const labels = count === 6 ? ['开始', '20秒', '40秒', '60秒', '80秒', '当前'] : [];
+  return Array.from({ length: count }, (_, index) => ({
+    label: labels[index] || `${index + 1}`,
+    value: heights[index] || 36
   }));
 }
 
-function normalizedSeries(samples, key) {
-  const values = samples.map((item) => Number(item.payload[key] || 0)).filter((value) => value > 0);
-  if (!values.length) {
-    return [0, 0, 0, 0, 0, 0, 0];
-  }
-  const indexes = [0, 1, 2, 3, 4, 5, 6].map((step) => Math.min(values.length - 1, Math.round(step * (values.length - 1) / 6)));
-  const selected = indexes.map((index) => values[index]);
-  const min = Math.min.apply(null, selected);
-  const max = Math.max.apply(null, selected);
-  return selected.map((value) => max === min ? 56 : Math.round(36 + (value - min) * 48 / (max - min)));
+function simpleHeightArray(list, count) {
+  const bucketed = bucketAverages(list, count);
+  const heights = normalizeHeights(bucketed, 34, 78);
+  return Array.from({ length: count }, (_, index) => heights[index] || 38);
 }
 
-function buildLiveMeasurement() {
-  const samples = currentSessionSamples();
-  if (!samples.length) {
-    return null;
-  }
-  const latest = samples[samples.length - 1];
-  const first = samples[0];
-  const heartRate = positiveAverage(samples, 'hr');
-  const respiration = positiveAverage(samples, 'br');
-  const ppgReady = Number(latest.payload.pp || 0) === 1 && Number(latest.payload.ir || 0) > 0;
-  const pressure = Number(latest.payload.pr);
-  const hasPressure = isFinite(pressure);
-  const motion = latest.payload.mo && latest.payload.mo !== 'imu-miss' ? latest.payload.mo : '未检测到';
-  const durationSeconds = Math.max(1, Math.round((latest.receivedAt - first.receivedAt) / 1000));
+function waveValues(samples) {
+  const recentStart = samples.length ? sampleTime(samples[0]) - 1000 : now() - DAY_MS;
+  const recentEnd = samples.length ? sampleTime(samples[samples.length - 1]) + 1000 : now();
+  const ppgWaves = waveSamples()
+    .filter((item) => sampleTime(item) >= recentStart && sampleTime(item) <= recentEnd)
+    .filter((item) => item.source === 'ppg' && Number.isFinite(Number(item.value)))
+    .map((item) => Number(item.value));
+  if (ppgWaves.length >= 4) return { source: 'PPG 红外真实波形', list: ppgWaves };
+
+  const ir = values(samples, 'ir', 1, 1000000);
+  if (ir.length >= 4) return { source: 'PPG 红外真实波形', list: ir };
+
+  const pressure = values(samples, 'pr', 1, 4095);
+  if (pressure.length >= 4) return { source: '压力真实波形', list: pressure };
+
+  return { source: '等待实时波形', list: [] };
+}
+
+function readinessFrom(samples) {
+  const latest = lastPayload(samples);
+  return {
+    ppg: Number(latest.pp || 0) === 1 || Number(latest.ir || 0) > 0 || Number(latest.red || 0) > 0,
+    imu: Number(latest.mr || 0) === 1 || String(latest.mo || '') === 'still',
+    pressure: Number(latest.ps || 0) === 1 || Number(latest.pr || 0) > 0,
+    haptic: Number(latest.hp || 0) === 1 || String(latest.haptic || '').toLowerCase() === 'ok'
+  };
+}
+
+function readinessScore(readiness) {
+  const keys = ['ppg', 'imu', 'pressure', 'haptic'];
+  return Math.round(keys.filter((key) => readiness[key]).length * 100 / keys.length);
+}
+
+function qualityLabel(readiness, hrAvg) {
+  const score = readinessScore(readiness);
+  if (hrAvg === null) return '等待心率';
+  if (score >= 75) return '良好';
+  if (score >= 50) return '可用';
+  return '需复测';
+}
+
+function pendingComparison() {
+  return {
+    ready: false,
+    tone: 'neutral',
+    stateLabel: '等待完成一次引导',
+    verdict: '开始并结束一次呼吸引导后，这里会自动比较使用前后。',
+    hasCompositeScore: false
+  };
+}
+
+function buildComparison(samples, stopReceivedAt) {
+  const stopAt = Number(stopReceivedAt || 0);
+  if (!stopAt || samples.length < 8) return pendingComparison();
+  const before = samples.filter((sample) => sampleTime(sample) < stopAt);
+  const after = samples.filter((sample) => sampleTime(sample) >= stopAt);
+  const beforeHr = average(values(before, 'hr', 35, 220));
+  const afterHr = average(values(after, 'hr', 35, 220));
+  const beforeBr = average(values(before, 'br', 6, 45));
+  const afterBr = average(values(after, 'br', 6, 45));
+  const ready = before.length >= 3 && after.length >= 3 && (beforeHr !== null || beforeBr !== null) && (afterHr !== null || afterBr !== null);
+  if (!ready) return pendingComparison();
+
+  const hrDelta = beforeHr !== null && afterHr !== null ? afterHr - beforeHr : null;
+  const brDelta = beforeBr !== null && afterBr !== null ? afterBr - beforeBr : null;
+  const score = Math.max(0, Math.min(100, Math.round(70 - Math.max(0, hrDelta || 0) * 2 - Math.max(0, brDelta || 0) * 2 + Math.max(0, -(hrDelta || 0)) * 1.5)));
+  const peace = (hrDelta === null || hrDelta <= 2) && (brDelta === null || brDelta <= 1);
+  return {
+    ready: true,
+    tone: peace ? 'peace' : 'warm',
+    stateLabel: peace ? '引导后更平稳' : '引导后仍需观察',
+    score,
+    hasCompositeScore: true,
+    beforeHr: displayNumber(beforeHr),
+    afterHr: displayNumber(afterHr),
+    beforeBr: displayNumber(beforeBr),
+    afterBr: displayNumber(afterBr),
+    hrDeltaLabel: hrDelta === null ? '--' : `${hrDelta > 0 ? '+' : ''}${Math.round(hrDelta)}`,
+    brDeltaLabel: brDelta === null ? '--' : `${brDelta > 0 ? '+' : ''}${Math.round(brDelta)}`,
+    confidenceLabel: `样本 ${before.length + after.length} 条`,
+    validSampleLabel: '按 GitHub 摘要口径',
+    verdict: peace ? '本次引导后心率或呼吸没有继续升高，可作为一次有效体验样本。' : '本次引导后指标仍有起伏，建议稳定佩戴后再测一次。'
+  };
+}
+
+function titleFrom(samples) {
+  const latest = lastPayload(samples);
+  if (typeof wx !== 'undefined' && wx.getStorageSync && wx.getStorageSync('hold_ppg_mode') === 'finger') return '指部 PPG 主动检测';
+  if (Number(latest.wear || 0) === 1) return 'HOLD 实时采集记录';
+  return 'HOLD 遥测记录';
+}
+
+function buildMeasurement(samples, options) {
+  const safeSamples = samples && samples.length ? samples : [];
+  if (!safeSamples.length) return demoMeasurements[0];
+  const startedAtMs = sampleTime(safeSamples[0]);
+  const endedAtMs = sampleTime(safeSamples[safeSamples.length - 1]);
+  const durationSeconds = Math.max(1, Math.round((endedAtMs - startedAtMs) / 1000));
+  const hrAvg = average(values(safeSamples, 'hr', 35, 220));
+  const brAvg = average(values(safeSamples, 'br', 6, 45));
+  const irAvg = average(values(safeSamples, 'ir', 1, 1000000));
+  const redAvg = average(values(safeSamples, 'red', 1, 1000000));
+  const prAvg = average(values(safeSamples, 'pr', 0, 4095));
+  const tempAvg = average(values(safeSamples, 'bt', 20, 60));
+  const latest = lastPayload(safeSamples);
+  const readiness = readinessFrom(safeSamples);
+  const score = readinessScore(readiness);
+  const wave = waveValues(safeSamples);
+  const comparison = buildComparison(safeSamples, options && options.stopReceivedAt);
+  const resultTag = hrAvg !== null || brAvg !== null || wave.list.length ? 'PPG 实时数据' : '暂无真实数据';
 
   return {
-    id: 'live-latest',
-    title: 'HOLD 实时采集记录',
-    startedAt: new Date(latest.receivedAt).toLocaleString(),
+    id: options && options.id ? options.id : `hold-live-${startedAtMs}`,
+    title: titleFrom(safeSamples),
+    startedAt: formatDate(startedAtMs),
+    startedAtMs,
+    endedAtMs,
     durationLabel: `${durationSeconds} 秒`,
-    resultTag: ppgReady ? 'PPG 实时数据' : hasPressure ? '压力实时数据' : '链路已连接',
-    summary: ppgReady ? '设备实时数据已同步，可继续保持佩戴以形成稳定记录。' : '蓝牙与记录链路持续更新；当前可读取压力，PPG 与运动传感器尚未在 I2C 总线上响应。',
+    resultTag,
+    summary: score >= 75
+      ? '已收到真实遥测：PPG、IMU、压力、震动。'
+      : '已收到部分真实遥测，建议减少移动并检查贴合。',
     metrics: [
-      { label: '平均心率', value: heartRate ? heartRate.toFixed(0) : '--', unit: heartRate ? ' bpm' : '' },
-      { label: '平均呼吸', value: respiration ? respiration.toFixed(0) : '--', unit: respiration ? ' 次/分' : '' },
-      { label: 'PPG 红外', value: Number(latest.payload.ir || 0) || '--', unit: '' },
-      { label: '压力原始值', value: hasPressure ? pressure : '--', unit: '' },
-      { label: '运动状态', value: motion, unit: '' },
-      { label: '佩戴状态', value: Number(latest.payload.wear || 0) === 1 ? '已佩戴' : '未佩戴', unit: '' }
+      { label: '平均心率', value: displayNumber(hrAvg), unit: 'bpm' },
+      { label: '平均呼吸', value: displayNumber(brAvg), unit: '次/分' },
+      { label: '信号质量', value: qualityLabel(readiness, hrAvg), unit: '' },
+      { label: 'PPG 红外', value: displayNumber(irAvg), unit: '' },
+      { label: 'PPG 红光', value: displayNumber(redAvg), unit: '' },
+      { label: '压力等级', value: displayNumber(prAvg === null ? null : Math.round(prAvg / 409.5)), unit: '/10' },
+      { label: '设备温度', value: displayNumber(tempAvg, 1), unit: '°C' },
+      { label: '佩戴状态', value: Number(latest.wear || 0) === 1 ? '已佩戴' : '未确认', unit: '' }
     ],
-    waveformMoments: chartMoments(samples),
+    waveformSource: wave.source,
+    waveformMoments: wave.list.length ? barsFromValues(wave.list, 6) : emptyBars(6),
+    readiness,
+    comparison,
     reportSections: [
-      { heading: '链路状态', text: `最近收到序号 ${latest.payload.seq || '--'} 的完整硬件遥测。` },
-      { heading: '传感器状态', text: ppgReady ? 'PPG 已初始化并返回红外原始数据。' : `PPG 未就绪：${latest.payload.pe || '未收到 I2C 数据'}；IMU：${latest.payload.mo || '未上报'}。` },
-      { heading: '建议', text: ppgReady ? '保持传感器贴合并减少移动，继续采集至少 60 秒。' : '检查 MAX30102 的 3V3、GND、SDA 与 SCL 接线。' }
+      { heading: '链路状态', text: `最近收到序号 ${latest.seq || '--'} 的硬件遥测。` },
+      { heading: '传感器状态', text: `PPG ${readiness.ppg ? '就绪' : '未就绪'} · IMU ${readiness.imu ? '就绪' : '未就绪'} · 压力 ${readiness.pressure ? '就绪' : '未就绪'} · 震动 ${readiness.haptic ? '就绪' : '未就绪'}` },
+      { heading: '建议', text: hrAvg === null ? 'PPG 有原始波形但心率尚不稳定，先固定传感器并保持 20 秒。' : '当前数据已经可以进入展示和报告链路。' }
     ]
   };
 }
 
-function getMeasurements() {
-  const live = buildLiveMeasurement();
-  return live ? [live].concat(activeMeasurements) : activeMeasurements;
+function liveMeasurement() {
+  return buildMeasurement(latestSession(telemetrySamples()));
 }
 
-function getDailyAnalyses() {
-  const samples = recentSamples();
-  if (!samples.length) {
-    return dailyAnalyses;
-  }
-  const heartRate = positiveAverage(samples, 'hr');
-  const respiration = positiveAverage(samples, 'br');
-  const latest = samples[samples.length - 1];
-  const completeness = Math.round(samples.reduce((sum, item) => {
-    const payload = item.payload;
-    return sum + [payload.hp, payload.pp, payload.mr, Number.isFinite(Number(payload.pr)), payload.wear].filter(Boolean).length;
-  }, 0) * 20 / samples.length);
-  const liveDay = Object.assign({}, dailyAnalyses[0], {
-    day: new Date().toLocaleDateString(),
-    title: '今日实时',
-    heartRateAvg: heartRate ? heartRate.toFixed(0) : '--',
-    respirationAvg: respiration ? respiration.toFixed(0) : '--',
-    stabilityScore: completeness,
-    respirationBars: normalizedSeries(samples, 'br'),
-    heartRateBars: normalizedSeries(samples, 'hr'),
-    insight: heartRate || respiration ? '今日实时遥测已同步，继续稳定佩戴可提高统计可靠性。' : '压力遥测正在持续记录；PPG 与 IMU 当前未响应，因此不会生成虚假的心率和呼吸值。',
-    timeline: [{ time: new Date(latest.receivedAt).toLocaleTimeString(), label: `最新遥测序号 ${latest.payload.seq || '--'}`, tone: 'strong' }]
-  });
-  return [liveDay].concat(dailyAnalyses);
+function getMeasurements() {
+  const live = liveMeasurement();
+  const records = storedRecords();
+  if (live.id === demoMeasurements[0].id) return records.length ? records : demoMeasurements;
+  const withoutDuplicate = records.filter((record) => record.id !== live.id);
+  return [live].concat(withoutDuplicate).slice(0, 20);
 }
 
 function getLatestMeasurement() {
-  return buildLiveMeasurement() || activeMeasurements[0];
+  return getMeasurements()[0];
 }
 
 function getMeasurementById(id) {
   return getMeasurements().find((item) => item.id === id) || getLatestMeasurement();
 }
 
+function buildDailyAnalysis(samples) {
+  const hrValues = values(samples, 'hr', 35, 220);
+  const brValues = values(samples, 'br', 6, 45);
+  const readiness = readinessFrom(samples);
+  const score = samples.length ? readinessScore(readiness) : '--';
+  const hrAvg = average(hrValues);
+  const brAvg = average(brValues);
+  const anxious = (hrAvg !== null && hrAvg >= 92) || (brAvg !== null && brAvg >= 19);
+  const peace = (hrAvg !== null && hrAvg >= 50 && hrAvg <= 82) && (brAvg !== null && brAvg >= 8 && brAvg <= 16);
+  return {
+    day: formatDay(sampleTime(samples[0] || {})),
+    title: '今日实时',
+    respirationAvg: displayNumber(brAvg),
+    heartRateAvg: displayNumber(hrAvg),
+    stabilityScore: score,
+    alertCount: anxious ? 1 : 0,
+    insight: samples.length
+      ? (peace ? '心率和呼吸落在较平稳区间，适合继续记录一段安静样本。' : anxious ? '心率或呼吸偏快，建议先做一次慢呼吸引导后再对比。' : '实时遥测已同步，继续稳定佩戴会提高趋势可靠性。')
+      : '连接设备后，这里会显示实时心率、呼吸和趋势。',
+    respirationBars: simpleHeightArray(brValues, 7),
+    heartRateBars: simpleHeightArray(hrValues, 7),
+    comparison: getLatestMeasurement().comparison || pendingComparison(),
+    timeline: [
+      { time: '现在', label: samples.length ? '实时遥测同步' : '等待设备连接', tone: samples.length ? 'strong' : 'soft' },
+      { time: '建议', label: '保持传感器贴合', tone: 'warm' }
+    ]
+  };
+}
+
+function getDailyAnalyses() {
+  const samples = telemetrySamples().filter((sample) => now() - sampleTime(sample) < DAY_MS);
+  return [buildDailyAnalysis(samples.length ? samples : latestSession(telemetrySamples()))];
+}
+
 function getLatestDailyAnalysis() {
   return getDailyAnalyses()[0];
 }
 
+function archiveLatestMeasurement(stopReceivedAt) {
+  const samples = latestSession(telemetrySamples());
+  if (!samples.length) return null;
+  const measurement = buildMeasurement(samples, {
+    id: `hold-${now()}`,
+    stopReceivedAt
+  });
+  const records = [measurement].concat(storedRecords().filter((item) => item.id !== measurement.id)).slice(0, 20);
+  save(RECORDS_KEY, records);
+  return measurement;
+}
+
+function getHomeOverview() {
+  const latest = getLatestDailyAnalysis();
+  return {
+    recentAdviceTitle: '近期综合建议',
+    recentAdvice: latest.stabilityScore === '--'
+      ? '连接设备后，首页会优先显示真实遥测。'
+      : Number(latest.stabilityScore) >= 75 ? '当前链路较完整，可以做一次引导前后对比。' : '先固定传感器贴合，再开始正式测试。',
+    recommendationBullets: ['胸口 PPG 默认常开', '指部 PPG 长按 3 秒开始', '报告只做体验趋势，不做医学诊断'],
+    readinessScore: latest.stabilityScore,
+    trendSeries: latest.heartRateBars || []
+  };
+}
+
+const homeOverview = getHomeOverview();
+
 module.exports = {
-  activeMeasurements,
-  dailyAnalyses,
+  activeMeasurements: demoMeasurements,
+  dailyAnalyses: [],
   homeOverview,
+  getHomeOverview,
   getMeasurements,
   getDailyAnalyses,
   getLatestMeasurement,
   getMeasurementById,
-  getLatestDailyAnalysis
+  getLatestDailyAnalysis,
+  archiveLatestMeasurement
 };

@@ -4,22 +4,28 @@ const vm = require('vm');
 
 let page;
 let cached;
+let bleNotifyHandler;
+let archiveCount = 0;
 const storage = {};
+const app = { globalData: {} };
+
 const context = {
-  Page(config) {
-    page = config;
+  Page(config) { page = config; },
+  require() {
+    return { archiveLatestMeasurement() { archiveCount += 1; } };
   },
   wx: {
-    onBLECharacteristicValueChange() {},
+    onBLECharacteristicValueChange(handler) { bleNotifyHandler = handler; },
+    onBLEConnectionStateChange() {},
     onBluetoothDeviceFound() {},
+    stopBluetoothDevicesDiscovery(options) { if (options && options.complete) options.complete(); },
     setStorageSync(key, value) {
       storage[key] = value;
       if (key === 'hold_latest_telemetry') cached = value;
     },
-    getStorageSync(key) {
-      return storage[key];
-    }
+    getStorageSync(key) { return storage[key]; }
   },
+  getApp() { return app; },
   console,
   ArrayBuffer,
   Uint8Array,
@@ -28,96 +34,114 @@ const context = {
   Number,
   Boolean,
   String,
-  setTimeout
+  setTimeout() {}
 };
 
 vm.runInNewContext(fs.readFileSync('web/pages/index/index.js', 'utf8'), context);
 page.setData = function setData(update) {
   Object.assign(this.data, update);
 };
-page.pageVisible = true;
-page.notifyBuffer = '';
+page.onLoad();
 
 function feed(payload) {
   const text = JSON.stringify(payload);
   for (let offset = 0; offset < text.length; offset += 18) {
     const bytes = Uint8Array.from(Buffer.from(text.slice(offset, offset + 18)));
-    page.handleNotifyMessage({ value: bytes.buffer });
+    bleNotifyHandler({ value: bytes.buffer });
   }
 }
 
 function feedWave(ir, pressure) {
   const bytes = Uint8Array.from(Buffer.from(`W,${ir},${pressure}`));
-  page.handleNotifyMessage({ value: bytes.buffer });
+  bleNotifyHandler({ value: bytes.buffer });
 }
 
-feed({ t: 'tel', pp: 1, p57: 1, mr: 1, ir: 123, red: 456, pr: 0, pl: 0, hp: 1, wear: 1 });
-assert.strictEqual(cached.payload.ir, 123);
-assert.ok(!page.data.signalStatus.includes('缺少'));
-assert.strictEqual(page.data.waveSource, 'PPG 红外原始波形');
-assert.strictEqual(page.data.waveValue, '123');
-feedWave(321, 17);
-assert.strictEqual(page.data.waveValue, '321');
+const first = Date.now();
+for (let index = 0; index < 8; index += 1) {
+  feed({
+    t: 'tel',
+    seq: index + 1,
+    pp: 1,
+    p57: 1,
+    ct: 1,
+    mr: 1,
+    mo: 'still',
+    ps: 1,
+    hp: 1,
+    wear: 1,
+    hr: 72 + (index % 2),
+    br: 14,
+    bs: 'imu',
+    ir: 123000 + index * 100,
+    red: 45600 + index * 80,
+    pr: 860 + index,
+    bt: 36.8
+  });
+}
 
-feed({ t: 'tel', pp: 0, p57: 0, pe: 'part-id-read-failed', mr: 0, mo: 'imu-miss', pr: 1, hp: 1, wear: 1 });
-assert.ok(page.data.signalStatus.includes('PPG（D4/D5 I2C 未响应）'));
-assert.ok(page.data.signalStatus.includes('运动'));
-assert.strictEqual(page.data.waveSource, '压力原始波形');
-assert.strictEqual(page.data.waveValue, '1');
-feedWave(0, 19);
-assert.strictEqual(page.data.waveValue, '19');
+assert.equal(cached.payload.ir, 123700);
+assert.ok(storage.hold_telemetry_samples.length >= 1);
+assert.equal(page.data.storagePath, 'hold_telemetry_samples');
+
+feedWave(321000, 17);
+assert.equal(app.globalData.liveWave.value, 321000);
+assert.ok(app.globalData.liveWave.points.length > 0);
+assert.ok(storage.hold_wave_samples.length > 0);
+
+feed({ t: 'b_start', mode: 'timed' });
+feed({ t: 'b_stop', reason: 'user' });
+assert.equal(archiveCount, 1);
+assert.ok(storage.hold_telemetry_samples.some((sample) => sample.payload.t === 'b_start'));
+assert.ok(storage.hold_telemetry_samples.some((sample) => sample.payload.t === 'b_stop'));
 
 page.pageVisible = false;
-feed({ t: 'tel', pp: 0, mr: 0, pr: 2, hp: 1, wear: 1 });
-assert.strictEqual(cached.payload.pr, 2);
-assert.strictEqual(page.data.waveValue, '19');
-page.pageVisible = true;
+feed({ t: 'tel', seq: 99, pp: 1, mr: 1, mo: 'still', ps: 1, hp: 1, wear: 1, hr: 73, br: 14, ir: 124000, red: 46000, pr: 900 });
+assert.equal(cached.payload.seq, 99);
+page.onUnload();
 
-storage.hold_telemetry_samples[storage.hold_telemetry_samples.length - 1].receivedAt -= 1001;
-feed({ t: 'tel', pp: 1, p57: 1, mr: 1, ir: 123, red: 456, hr: 72, br: 14, pr: 1, hp: 1, wear: 1 });
-let homePage;
-vm.runInNewContext(fs.readFileSync('web/pages/home/index.js', 'utf8'), {
-  Page(config) {
-    homePage = config;
-  },
-  require() {
-    return {
-      homeOverview: { readinessScore: 80 },
-      getLatestMeasurement() {
-        return { metrics: [{ value: '72' }] };
-      },
-      getLatestDailyAnalysis() {
-        return { heartRateAvg: '72', respirationAvg: '14' };
-      }
-    };
-  },
-  wx: {
-    getStorageSync() {
-      return cached;
-    }
-  },
-  Date,
-  JSON,
-  Number,
-  Object,
-  Math,
-  clearInterval,
-  setInterval
-});
-homePage.setData = function setData(update) {
-  Object.assign(this.data, update);
-};
-homePage.data.latestMeasurement = { metrics: [{ value: '0' }] };
-homePage.data.latestDaily = { heartRateAvg: 0, respirationAvg: 0 };
-homePage.refreshLiveTelemetry();
-assert.strictEqual(homePage.data.latestMeasurement.metrics[0].value, '72');
-assert.strictEqual(homePage.data.latestDaily.respirationAvg, '14');
+const summaryBase = Date.now() - 12000;
+storage.hold_telemetry_samples = Array.from({ length: 8 }, (_, index) => ({
+  receivedAt: summaryBase + index * 1000,
+  sessionId: 'summary-session',
+  payload: {
+    t: 'tel',
+    seq: index + 1,
+    pp: 1,
+    p57: 1,
+    ct: 1,
+    mr: 1,
+    mo: 'still',
+    ps: 1,
+    hp: 1,
+    wear: 1,
+    hr: 72 + (index % 2),
+    br: 14,
+    ir: 123000 + index * 100,
+    red: 45600 + index * 80,
+    pr: 860 + index,
+    bt: 36.8
+  }
+}));
+storage.hold_wave_samples = storage.hold_telemetry_samples.map((sample) => ({
+  receivedAt: sample.receivedAt,
+  sessionId: sample.sessionId,
+  source: 'ppg',
+  value: sample.payload.ir
+}));
 
-global.wx = { getStorageSync: (key) => storage[key] };
+global.wx = { getStorageSync: (key) => storage[key], setStorageSync: (key, value) => { storage[key] = value; } };
 const healthData = require('../utils/mock-health-data');
-assert.strictEqual(healthData.getMeasurements()[0].id, 'live-latest');
-assert.strictEqual(healthData.getMeasurements()[0].metrics[3].label, '压力原始值');
-assert.strictEqual(healthData.getLatestDailyAnalysis().heartRateAvg, '72');
-delete global.wx;
+const latestMeasurement = healthData.getLatestMeasurement();
+const metricMap = Object.fromEntries(latestMeasurement.metrics.map((metric) => [metric.label, metric.value]));
+assert.ok(latestMeasurement.id.startsWith('hold-live-'));
+assert.equal(metricMap['平均心率'], '73');
+assert.equal(metricMap['平均呼吸'], '14');
+assert.equal(metricMap['PPG 红外'], '123350');
+assert.equal(metricMap['PPG 红光'], '45880');
+assert.equal(metricMap['压力等级'], '2');
+assert.equal(latestMeasurement.waveformMoments.length, 6);
+assert.equal(healthData.getLatestDailyAnalysis().heartRateAvg, '73');
+assert.equal(healthData.getLatestDailyAnalysis().respirationAvg, '14');
 
-console.log('BLE notify smoke test passed');
+delete global.wx;
+console.log('BLE notify GitHub summary smoke: ok');

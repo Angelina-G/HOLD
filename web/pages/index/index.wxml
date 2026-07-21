@@ -31,6 +31,11 @@
     <view class="status-row"><text class="label">呼吸反馈</text><text class="value">{{breathRunning ? '运行中' : '停止'}}</text></view>
     <view class="status-row"><text class="label">基础校准</text><text class="value">{{calibrationRunning ? '运行中' : '空闲'}}</text></view>
     <view class="status-row"><text class="label">信号闭环</text><text class="value">{{signalStatus}}</text></view>
+    <view class="calibration-guide">
+      <view class="guide-title">基础校准怎么做</view>
+      <view class="guide-copy">{{calibrationGuide}}</view>
+      <view class="guide-steps">戴稳 · 贴合 · 自然呼吸 · 等待震动结束</view>
+    </view>
   </view>
 
   <view class="panel wave-panel">
@@ -43,6 +48,20 @@
     </view>
     <canvas canvas-id="liveWaveCanvas" class="live-wave-canvas"></canvas>
     <view class="wave-note">PPG 可用时显示红外原始波形，否则显示压力原始波形。</view>
+  </view>
+
+  <view class="panel">
+    <view class="panel-title">实时指标</view>
+    <view class="telemetry-grid">
+      <view class="telemetry-cell"><text class="telemetry-value">{{breathRate}}</text><text class="telemetry-unit">次/分</text><text class="telemetry-label">呼吸率</text></view>
+      <view class="telemetry-cell"><text class="telemetry-value">{{heartRate}}</text><text class="telemetry-unit">bpm</text><text class="telemetry-label">心率</text></view>
+      <view class="telemetry-cell"><text class="telemetry-value compact">{{motionState}}</text><text class="telemetry-label">运动状态</text></view>
+      <view class="telemetry-cell"><text class="telemetry-value">{{pressureRaw}}</text><text class="telemetry-unit">ADC</text><text class="telemetry-label">压力原始值 · {{pressureLevel}}/10</text></view>
+      <view class="telemetry-cell"><text class="telemetry-value compact">{{ppgIr}}</text><text class="telemetry-label">PPG 红外</text></view>
+      <view class="telemetry-cell"><text class="telemetry-value compact">{{ppgRed}}</text><text class="telemetry-label">PPG 红光</text></view>
+      <view class="telemetry-cell"><text class="telemetry-value">{{bodyTemperature}}</text><text class="telemetry-unit">°C</text><text class="telemetry-label">设备温度</text></view>
+      <view class="telemetry-cell"><text class="telemetry-value compact">{{wearState}}</text><text class="telemetry-label">佩戴状态</text></view>
+    </view>
   </view>
 
   <view class="panel">

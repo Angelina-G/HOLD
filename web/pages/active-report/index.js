@@ -6,7 +6,28 @@ Page({
   },
 
   onLoad(options) {
-    const report = getMeasurementById(options.id);
-    this.setData({ report });
+    this.reportId = options.id;
+    this.refreshReport();
+  },
+
+  onShow() {
+    this.refreshReport();
+    this.refreshTimer = setInterval(() => this.refreshReport(), 1000);
+  },
+
+  onHide() {
+    clearInterval(this.refreshTimer);
+  },
+
+  onUnload() {
+    clearInterval(this.refreshTimer);
+  },
+
+  refreshReport() {
+    this.setData({ report: getMeasurementById(this.reportId) });
+  },
+
+  backToHistory() {
+    wx.redirectTo({ url: '/pages/active-history/index' });
   }
 });

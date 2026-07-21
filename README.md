@@ -1,5 +1,7 @@
 # HOLD 工程仓库
 
+数据协议、严格前后对比条件与实机验收步骤见 [HOLD BLE 数据闭环验证](docs/HOLD-BLE-数据闭环验证.md)。
+
 ## 项目简介
 本仓库用于承载 HOLD 项目的嵌入式固件实验、整机联调、小程序前端壳子与阶段性开发记录。
 
@@ -8,6 +10,7 @@
 - MAX30102、MPU6050/MPU6500、压力模块、DRV2605L 的独立探针与整机冒烟测试
 - 呼吸/心率相关原始数据采集与日志导出
 - 微信小程序调试页与用户页壳子
+- 微信小程序两分钟用户测试：30 秒基线、60 秒呼吸引导、30 秒恢复与前后对比
 - 接线文档、开发日志和阶段性方案沉淀
 
 ## 当前工程结构
@@ -29,9 +32,10 @@
 - 可直接使用 [arduino/README.md](c:\Users\LBG\Desktop\hold\arduino\README.md) 中的验证步骤与草图。
 
 ## 推荐使用方式
-1. 在 HOLD 根目录执行 pio run 进行编译。
-2. 连接开发板后执行 pio run -t upload 进行烧录。
-3. 执行 pio device monitor -b 115200 查看串口日志。
+1. 微信开发者工具应打开 HOLD 根目录，根目录 `project.config.json` 会把 `web/` 指定为小程序目录。
+2. 在 HOLD 根目录执行 `pio run -e xiao_esp32s3_full_smoke_test` 编译整机固件。
+3. 连接开发板后执行 `pio run -e xiao_esp32s3_full_smoke_test -t upload` 烧录。
+4. 执行 pio device monitor -b 115200 查看串口日志。
 
 ## 串口日志预期
 - 上电或复位后会先输出一组启动信息。

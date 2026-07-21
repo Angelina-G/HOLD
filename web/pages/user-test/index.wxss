@@ -1,0 +1,391 @@
+.test-page {
+  min-height: 100vh;
+  padding: 28rpx;
+  overflow-x: hidden;
+  background: linear-gradient(180deg, #fff8f3 0%, #f6f1fb 52%, #f2f8f6 100%);
+  color: #332a31;
+}
+
+.test-head {
+  padding: 18rpx 6rpx 26rpx;
+}
+
+.step-label,
+.result-kicker {
+  color: #8a6778;
+  font-size: 22rpx;
+  font-weight: 700;
+}
+
+.mode-pill {
+  display: inline-block;
+  margin-top: 12rpx;
+  padding: 8rpx 18rpx;
+  border-radius: 999rpx;
+  background: rgba(255, 255, 255, 0.72);
+  color: #5e8f8b;
+  font-size: 22rpx;
+  font-weight: 700;
+}
+
+.test-title {
+  margin-top: 10rpx;
+  font-size: 44rpx;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.test-copy {
+  margin-top: 10rpx;
+  color: #72676e;
+  font-size: 25rpx;
+  line-height: 1.7;
+}
+
+.signal-band {
+  display: flex;
+  width: 100%;
+  padding: 22rpx;
+  align-items: center;
+  gap: 18rpx;
+  border: 2rpx solid #eadfe3;
+  border-radius: 18rpx;
+  background: rgba(255, 255, 255, 0.76);
+}
+
+.signal-band.good {
+  border-color: #b9dcd5;
+  background: #edf7f4;
+}
+
+.signal-dot {
+  width: 18rpx;
+  height: 18rpx;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: #c48b7e;
+}
+
+.good .signal-dot {
+  background: #4f9c91;
+}
+
+.signal-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.signal-title {
+  font-size: 26rpx;
+  font-weight: 700;
+}
+
+.signal-detail,
+.action-note,
+.confidence {
+  margin-top: 5rpx;
+  color: #7d7278;
+  font-size: 21rpx;
+  line-height: 1.55;
+}
+
+.signal-values {
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+  align-items: flex-end;
+  color: #51474e;
+  font-size: 21rpx;
+  line-height: 1.6;
+}
+
+.stage-panel,
+.guide-stage,
+.result-panel {
+  margin-top: 24rpx;
+  padding: 30rpx;
+  overflow: hidden;
+  border-radius: 22rpx;
+  background: rgba(255, 253, 250, 0.94);
+  box-shadow: 0 16rpx 42rpx rgba(151, 125, 157, 0.10);
+}
+
+.subjective-title,
+.physiology-title {
+  font-size: 28rpx;
+  font-weight: 700;
+}
+
+.subjective-scale {
+  display: flex;
+  margin-top: 18rpx;
+  justify-content: space-between;
+  color: #756a71;
+  font-size: 22rpx;
+}
+
+.primary-action,
+.secondary-action,
+.stop-action,
+.small-action {
+  min-height: 88rpx;
+  margin-top: 24rpx;
+  border-radius: 16rpx;
+  font-size: 27rpx;
+  font-weight: 700;
+}
+
+.primary-action {
+  background: #40343f;
+  color: #fffaf8;
+}
+
+.primary-action[disabled] {
+  background: #ddd4d8;
+  color: #8b8186;
+}
+
+.secondary-action,
+.stop-action,
+.small-action {
+  border: 2rpx solid #ddd3da;
+  background: #fffdfb;
+  color: #5b4b59;
+}
+
+.small-action {
+  min-height: 72rpx;
+  margin-top: 12rpx;
+  font-size: 23rpx;
+}
+
+.action-note {
+  text-align: center;
+}
+
+.timed {
+  padding: 48rpx 30rpx;
+  text-align: center;
+}
+
+.countdown {
+  font-size: 104rpx;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.countdown-unit {
+  margin-top: 8rpx;
+  color: #7c7178;
+  font-size: 23rpx;
+}
+
+.progress-track {
+  height: 12rpx;
+  margin-top: 34rpx;
+  overflow: hidden;
+  border-radius: 8rpx;
+  background: #ece4e8;
+}
+
+.progress-fill {
+  height: 100%;
+  border-radius: 8rpx;
+  background: #7fb5ad;
+}
+
+.still-cue,
+.guide-ready-copy {
+  margin-top: 28rpx;
+  color: #655b61;
+  font-size: 25rpx;
+  line-height: 1.7;
+  text-align: center;
+}
+
+.guide-ready-mark {
+  color: #4c8c83;
+  font-size: 34rpx;
+  font-weight: 700;
+  text-align: center;
+}
+
+.guide-stage {
+  text-align: center;
+}
+
+.breath-disc {
+  display: flex;
+  width: 320rpx;
+  height: 320rpx;
+  margin: 22rpx auto 0;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: #e8e0e6;
+  transform: scale(0.82);
+  transition: transform 2200ms ease-in-out, background-color 500ms ease;
+}
+
+.breath-disc.inhale {
+  background: #efa49d;
+  transform: scale(1);
+}
+
+.breath-disc.exhale {
+  background: #8dbdb5;
+  transform: scale(0.78);
+}
+
+.phase-name {
+  font-size: 54rpx;
+  font-weight: 700;
+}
+
+.phase-time {
+  margin-top: 8rpx;
+  font-size: 23rpx;
+}
+
+.phase-key {
+  display: flex;
+  margin-top: 34rpx;
+  justify-content: center;
+  gap: 30rpx;
+  color: #655b61;
+  font-size: 22rpx;
+}
+
+.key-line {
+  display: inline-block;
+  width: 28rpx;
+  height: 8rpx;
+  margin-right: 8rpx;
+  border-radius: 5rpx;
+  vertical-align: middle;
+}
+
+.key-line.strong { background: #e58d85; }
+.key-line.soft { background: #76aaa2; }
+
+.result-panel.peace {
+  border-top: 10rpx solid #73aaa2;
+}
+
+.result-panel.anxious {
+  border-top: 10rpx solid #df8578;
+}
+
+.result-panel.neutral {
+  border-top: 10rpx solid #a892b3;
+}
+
+.result-title {
+  margin-top: 8rpx;
+  font-size: 38rpx;
+  font-weight: 700;
+}
+
+.subjective-compare {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  margin-top: 26rpx;
+  align-items: center;
+  gap: 18rpx;
+  text-align: center;
+}
+
+.subjective-compare > view:not(.compare-arrow) {
+  display: flex;
+  min-width: 0;
+  padding: 20rpx;
+  flex-direction: column;
+  border-radius: 16rpx;
+  background: #f7f1f4;
+  color: #756a71;
+  font-size: 21rpx;
+}
+
+.compare-number {
+  color: #332a31;
+  font-size: 44rpx;
+  font-weight: 700;
+}
+
+.compare-arrow {
+  color: #8e7d88;
+  font-size: 34rpx;
+}
+
+.after-scale,
+.physiology {
+  margin-top: 28rpx;
+  padding-top: 26rpx;
+  border-top: 2rpx solid #eee6ea;
+}
+
+.physiology-state {
+  margin-top: 8rpx;
+  color: #4d847c;
+  font-size: 30rpx;
+  font-weight: 700;
+}
+
+.metric-pairs {
+  margin-top: 18rpx;
+}
+
+.metric-pairs > view {
+  display: flex;
+  padding: 14rpx 0;
+  justify-content: space-between;
+  gap: 20rpx;
+  border-bottom: 1rpx solid #eee7ea;
+  color: #5e555b;
+  font-size: 23rpx;
+}
+
+.metric-pairs > view text:last-child {
+  min-width: 0;
+  text-align: right;
+}
+
+.waiting-result {
+  color: #71666d;
+  font-size: 23rpx;
+  line-height: 1.7;
+}
+
+.result-actions {
+  margin-top: 24rpx;
+}
+
+.error-text {
+  margin-top: 18rpx;
+  padding: 18rpx;
+  border-radius: 14rpx;
+  background: #fff0eb;
+  color: #a34f43;
+  font-size: 23rpx;
+}
+
+@media (max-width: 360px) {
+  .signal-band {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .signal-values {
+    width: 100%;
+    padding-left: 36rpx;
+    align-items: flex-start;
+    flex-direction: row;
+    gap: 22rpx;
+  }
+
+  .breath-disc {
+    width: 280rpx;
+    height: 280rpx;
+  }
+}

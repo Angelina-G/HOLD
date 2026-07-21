@@ -4,6 +4,11 @@
     <view class="hero-subtitle">设备遥测会先记录在本机；PPG 可用后自动补充心率、呼吸与波形报告。</view>
   </view>
 
+  <view class="history-empty" wx:if="{{!activeMeasurements.length}}">
+    <view class="empty-title">暂无真实检测记录</view>
+    <view class="empty-copy">连接设备，完成一次呼吸引导并在结束后继续佩戴 30 秒，记录会自动出现在这里。</view>
+  </view>
+
   <block wx:for="{{activeMeasurements}}" wx:key="id">
     <view class="history-card" bindtap="openReport" data-id="{{item.id}}">
       <view class="history-head">

@@ -15,12 +15,44 @@
         <text class="chip-value">{{latestMeasurement.startedAt}}</text>
       </view>
       <view class="hero-chip">
-        <text class="chip-label">今日平均心率</text>
+        <text class="chip-label">本次平均心率</text>
         <text class="chip-value">{{latestDaily.heartRateAvg}} bpm</text>
       </view>
       <view class="hero-chip">
         <text class="chip-label">近期准备度</text>
         <text class="chip-value">{{homeOverview.readinessScore}} / 100</text>
+      </view>
+    </view>
+
+    <button class="test-entry" bindtap="openUserTest">
+      <text class="test-entry-title">开始一次舒缓测试</text>
+      <text class="test-entry-copy">约 2 分钟 · 测量、引导、前后对比</text>
+    </button>
+  </view>
+
+  <view class="module-card mode-card">
+    <view class="module-header simple">
+      <view>
+        <view class="module-tag">PPG 模式</view>
+        <view class="module-title">胸口连续，指部主动</view>
+      </view>
+    </view>
+    <view class="ppg-mode-grid">
+      <view class="ppg-mode active" bindtap="selectChestMode">
+        <view class="mode-name">胸口 PPG</view>
+        <view class="mode-state peace-text">默认常开</view>
+        <view class="mode-copy">用于连续观察心率、呼吸和放松趋势。</view>
+      </view>
+      <view class="ppg-mode finger {{fingerHolding ? 'holding' : ''}}"
+        bindtouchstart="startFingerHold"
+        bindtouchend="cancelFingerHold"
+        bindtouchcancel="cancelFingerHold">
+        <view class="mode-name">指部 PPG</view>
+        <view class="mode-state warm-text">按住 3 秒开始</view>
+        <view class="mode-copy">用于一次更稳定的指尖检测报告。</view>
+        <view class="hold-meter">
+          <view class="hold-fill" style="width: {{fingerHoldProgress}}%"></view>
+        </view>
       </view>
     </view>
   </view>
@@ -50,7 +82,7 @@
     </view>
 
     <view class="mini-chart">
-      <view class="mini-chart-title">最近一次检测波形摘要</view>
+      <view class="mini-chart-title">{{latestMeasurement.waveformSource || '最近一次检测波形摘要'}}</view>
       <view class="chart-columns">
         <block wx:for="{{latestMeasurement.waveformMoments}}" wx:key="label">
           <view class="chart-column">
@@ -93,13 +125,30 @@
       </view>
       <view class="analysis-stat stability">
         <text class="analysis-number">{{latestDaily.stabilityScore}}</text>
-        <text class="analysis-unit">/100</text>
+        <text class="analysis-unit" wx:if="{{latestDaily.stabilityScore != '--'}}">/100</text>
         <text class="analysis-label">数据完整度</text>
       </view>
     </view>
 
+    <view class="wellbeing-card {{wellbeing.tone}}">
+      <view class="wellbeing-copy">
+        <view class="wellbeing-kicker">当前状态 · 非医学评估</view>
+        <view class="wellbeing-title">{{wellbeing.title}}</view>
+        <view class="wellbeing-note">{{wellbeing.copy}}</view>
+        <view class="state-zones">
+          <block wx:for="{{wellbeing.zoneItems}}" wx:key="key">
+            <view class="state-zone {{item.key}} {{item.active ? 'active' : ''}}">{{item.label}}</view>
+          </block>
+        </view>
+      </view>
+      <view class="wellbeing-score">
+        <text>{{wellbeing.score}}</text>
+        <text class="score-unit" wx:if="{{wellbeing.score != '--'}}">/100</text>
+      </view>
+    </view>
+
     <view class="line-preview">
-      <view class="line-preview-title">近 7 个采样时段趋势</view>
+      <view class="line-preview-title">近 7 个采样时段相对趋势 · 自动缩放</view>
       <view class="line-track">
         <block wx:for="{{latestDaily.heartRateBars}}" wx:key="index">
           <view class="spark-node" style="height: {{item}}rpx"></view>
@@ -108,6 +157,57 @@
     </view>
 
     <view class="module-copy">{{latestDaily.insight}}</view>
+
+    <view class="comparison-card {{latestDaily.comparison.tone}}" wx:if="{{latestDaily.comparison}}">
+      <view class="comparison-head">
+        <view>
+      <view class="comparison-kicker">本次变化指数 · 非医学评估</view>
+          <view class="comparison-title">{{latestDaily.comparison.stateLabel}}</view>
+        </view>
+        <view class="calm-score" wx:if="{{latestDaily.comparison.hasCompositeScore}}">
+          <text>{{latestDaily.comparison.score}}</text><text class="score-unit">/100</text>
+        </view>
+      </view>
+
+      <view class="comparison-chart" wx:if="{{latestDaily.comparison.ready}}">
+        <view class="compare-metric">
+          <view class="compare-label">心率 bpm</view>
+          <view class="paired-bars">
+            <view class="paired-column warm-column">
+              <view class="paired-value">{{latestDaily.comparison.beforeHr}}</view>
+              <view class="compare-bar" style="height: {{latestDaily.comparison.beforeHrHeight}}rpx"></view>
+              <view class="paired-caption">引导前</view>
+            </view>
+            <view class="paired-column after-column {{latestDaily.comparison.tone}}">
+              <view class="paired-value">{{latestDaily.comparison.afterHr}}</view>
+              <view class="compare-bar" style="height: {{latestDaily.comparison.afterHrHeight}}rpx"></view>
+              <view class="paired-caption">引导后</view>
+            </view>
+          </view>
+          <view class="delta-label">变化 {{latestDaily.comparison.hrDeltaLabel}}</view>
+        </view>
+
+        <view class="compare-metric">
+          <view class="compare-label">呼吸 次/分</view>
+          <view class="paired-bars">
+            <view class="paired-column warm-column">
+              <view class="paired-value">{{latestDaily.comparison.beforeBr}}</view>
+              <view class="compare-bar" style="height: {{latestDaily.comparison.beforeBrHeight}}rpx"></view>
+              <view class="paired-caption">引导前</view>
+            </view>
+            <view class="paired-column after-column {{latestDaily.comparison.tone}}">
+              <view class="paired-value">{{latestDaily.comparison.afterBr}}</view>
+              <view class="compare-bar" style="height: {{latestDaily.comparison.afterBrHeight}}rpx"></view>
+              <view class="paired-caption">引导后</view>
+            </view>
+          </view>
+          <view class="delta-label">变化 {{latestDaily.comparison.brDeltaLabel}}</view>
+        </view>
+      </view>
+
+      <view class="comparison-verdict">{{latestDaily.comparison.verdict}}</view>
+    <view class="comparison-note" wx:if="{{latestDaily.comparison.ready}}">{{latestDaily.comparison.confidenceLabel}} · {{latestDaily.comparison.validSampleLabel}} · 仅反映本次生理变化趋势</view>
+    </view>
   </view>
 
   <view class="module-card advice-card">

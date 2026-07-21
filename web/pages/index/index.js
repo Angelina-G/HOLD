@@ -3,6 +3,8 @@ var EVENT_CHARACTERISTIC_UUID = '19b10011-e8f2-537e-4f6c-d104768a1214';
 var COMMAND_CHARACTERISTIC_UUID = '19b10013-e8f2-537e-4f6c-d104768a1214';
 var DEVICE_NAME_PREFIX = 'HOLD-LINK-TEST';
 var DEVICE_NAME_PREFIXES = ['HOLD-LINK-TEST', 'HOLD-INTEGRATED'];
+var archiveLatestMeasurement = require('../../utils/mock-health-data').archiveLatestMeasurement;
+var lastWaveStoredAt = 0;
 
 function holdLog(stage, detail) {
   console.info('[HOLD][' + stage + ']', detail || '');
@@ -67,7 +69,7 @@ function buildSignalSummary(payload) {
     ['佩戴', present(payload.wear) ? Number(payload.wear) === 1 : present(payload.contact)],
     [ppgLabel, Number(payload.pp || 0) === 1 && (numericPositive(payload.ir) || numericPositive(payload.red))],
     ['运动', present(payload.mr) ? Number(payload.mr) === 1 : hasAny(payload, ['motion', 'ax', 'ay', 'az'])],
-    ['压力', hasAny(payload, ['pr', 'pl', 'pressure'])],
+    ['压力', present(payload.ps) ? Number(payload.ps) === 1 : hasAny(payload, ['pr', 'pl', 'pressure'])],
     ['震动', present(payload.hp) ? Number(payload.hp) === 1 : Boolean(payload.haptic_ready)]
   ];
   var ok = [];
@@ -83,6 +85,26 @@ function buildSignalSummary(payload) {
     text: missing.length ? '已到 ' + ok.length + '/5，缺少：' + missing.join('、') : '5/5 信号已到齐',
     okCount: ok.length
   };
+}
+
+function breathDetectorText(payload) {
+  var labels = {
+    warmup: '预热并选择呼吸轴',
+    motion: '检测到移动，请保持稳定',
+    cycle: '正在寻找完整呼吸周期',
+    confirm: '已找到周期，正在确认稳定性',
+    valid: '呼吸率有效'
+  };
+  var label = labels[payload.bd] || '等待呼吸算法状态';
+  if (payload.bd === 'confirm' && Number(payload.bx || 0) > 0) {
+    label += '（候选 ' + Number(payload.bx).toFixed(1) + ' 次/分）';
+  }
+  return label;
+}
+
+function motionText(payload) {
+  if (Number(payload.mr || 0) !== 1) return 'IMU 未就绪';
+  return { still: '静止', moving: '移动中', active: '活跃' }[payload.mo] || payload.mo || '--';
 }
 
 function takeJsonMessages(buffer, chunk) {
@@ -134,13 +156,56 @@ function takeJsonMessages(buffer, chunk) {
 
 function cacheTelemetry(payload) {
   var now = Date.now();
-  wx.setStorageSync('hold_latest_telemetry', { payload: payload, receivedAt: now });
+  var sessionId = wx.getStorageSync('hold_ble_session_id') || '';
+  wx.setStorageSync('hold_latest_telemetry', { payload: payload, receivedAt: now, sessionId: sessionId });
 
   var samples = wx.getStorageSync('hold_telemetry_samples') || [];
-  if (!samples.length || now - samples[samples.length - 1].receivedAt >= 1000) {
-    samples.push({ payload: payload, receivedAt: now });
-    wx.setStorageSync('hold_telemetry_samples', samples.slice(-300));
+  var eventType = String(payload.t || payload.event_type || '');
+  var isControlEvent = eventType && eventType !== 'tel';
+  if (isControlEvent || !samples.length || now - samples[samples.length - 1].receivedAt >= 1000) {
+    samples.push({ payload: payload, receivedAt: now, sessionId: sessionId });
+    wx.setStorageSync('hold_telemetry_samples', samples.slice(-700));
   }
+  return now;
+}
+
+function cacheLiveWave(app, waveIr, wavePressure) {
+  if (!app || !app.globalData) {
+    return;
+  }
+  var now = Date.now();
+  var latest = wx.getStorageSync('hold_latest_telemetry') || {};
+  var telemetry = latest.payload || {};
+  var fresh = latest.receivedAt && now - latest.receivedAt <= 2000;
+  var ppgReady = fresh && Number(telemetry.pp || 0) === 1 && Number(waveIr || 0) > 0;
+  var pressureReady = fresh && Number(telemetry.ps || 0) === 1 && isFinite(Number(wavePressure));
+  if (!ppgReady && !pressureReady) return null;
+  var source = ppgReady ? 'PPG 红外实时波形' : '压力实时波形';
+  var value = Number(ppgReady ? waveIr : wavePressure);
+  if (!isFinite(value)) {
+    return;
+  }
+  var current = app.globalData.liveWave || {};
+  var points = current.source === source ? (current.points || []) : [];
+  points.push(value);
+  app.globalData.liveWave = {
+    source: source,
+    value: Math.round(value),
+    points: points.slice(-120),
+    updatedAt: now
+  };
+  if (now - lastWaveStoredAt >= 500) {
+    lastWaveStoredAt = now;
+    var samples = wx.getStorageSync('hold_wave_samples') || [];
+    samples.push({
+      receivedAt: now,
+      sessionId: wx.getStorageSync('hold_ble_session_id') || '',
+      source: ppgReady ? 'ppg' : 'pressure',
+      value: value
+    });
+    wx.setStorageSync('hold_wave_samples', samples.slice(-1400));
+  }
+  return { pp: ppgReady ? 1 : 0, ps: pressureReady ? 1 : 0, ir: waveIr, pr: wavePressure };
 }
 
 Page({
@@ -157,12 +222,22 @@ Page({
     breathRunning: false,
     calibrationRunning: false,
     hapticReady: false,
+    breathRate: '--',
+    heartRate: '--',
+    motionState: '--',
+    pressureRaw: '--',
+    pressureLevel: '--',
+    ppgIr: '--',
+    ppgRed: '--',
+    bodyTemperature: '--',
+    wearState: '等待数据',
     pressCount: 0,
     waveSource: '等待硬件数据',
     waveValue: '--',
     waveUnit: '',
     localRecordStatus: '等待硬件遥测',
     signalStatus: '等待硬件数据',
+    calibrationGuide: '校准前：戴稳设备，让胸口传感器贴合，保持自然呼吸。',
     lastEventTime: '暂无',
     lastEventRaw: '等待硬件通知...',
     cloudStatus: '未提交',
@@ -176,6 +251,10 @@ Page({
     self.app = typeof getApp === 'function' ? getApp() : null;
     if (self.app && self.app.globalData) {
       self.app.globalData.blePage = self;
+      var savedSession = self.app.globalData.bleSession;
+      if (savedSession && savedSession.deviceId) {
+        self.setData(savedSession);
+      }
     }
     self.connecting = false;
     self.notifyBuffer = '';
@@ -193,8 +272,23 @@ Page({
     if (wx.onBLEConnectionStateChange) {
       wx.onBLEConnectionStateChange(function (result) {
         holdLog('CONNECTION_STATE', result);
-        if (result.deviceId === self.data.deviceId && !result.connected && self.pageVisible) {
-          self.setData({ connectionStatus: '设备连接已断开', canSendCommand: false });
+        if (result.deviceId === self.data.deviceId && !result.connected) {
+          self.connecting = false;
+          if (self.app && self.app.globalData) {
+            self.app.globalData.bleSession = null;
+          }
+          wx.removeStorageSync('hold_ble_session_id');
+          wx.removeStorageSync('hold_pending_intervention_stop');
+          self.setData({
+            deviceId: '',
+            serviceId: '',
+            eventCharacteristicId: '',
+            commandCharacteristicId: '',
+            canSendCommand: false
+          });
+          if (self.pageVisible) {
+            self.setData({ connectionStatus: '设备连接已断开', canSendCommand: false });
+          }
         }
       });
     }
@@ -248,13 +342,24 @@ Page({
 
   handleScanAndConnect: function () {
     holdLog('BLE', '开始安卓权限检查与扫描');
+    var oldDeviceId = this.data.deviceId;
     this.connecting = false;
     this.setData({
       adapterStatus: '准备蓝牙',
       connectionStatus: '未连接',
       scanning: true,
-      canSendCommand: false
+      canSendCommand: false,
+      deviceId: '',
+      serviceId: '',
+      eventCharacteristicId: '',
+      commandCharacteristicId: ''
     });
+    if (this.app && this.app.globalData) {
+      this.app.globalData.bleSession = null;
+    }
+    if (oldDeviceId) {
+      wx.closeBLEConnection({ deviceId: oldDeviceId });
+    }
     this.ensureAndroidScanReady(this.openAdapterAndScan.bind(this));
   },
 
@@ -411,7 +516,7 @@ Page({
         self.setData({
           eventCharacteristicId: eventCharacteristic.uuid,
           commandCharacteristicId: commandCharacteristic.uuid,
-          canSendCommand: true
+          canSendCommand: false
         });
         self.enableNotify(deviceId, serviceId, eventCharacteristic.uuid);
       },
@@ -433,19 +538,38 @@ Page({
         holdLog('NOTIFY', '通知订阅成功，等待完整 JSON 帧');
         self.setData({
           connectionStatus: '已订阅硬件通知',
-          adapterStatus: '链路已打通，可发送呼吸或校准命令'
+          adapterStatus: '链路已打通，可发送呼吸或校准命令',
+          canSendCommand: true
         });
+        var sessionId = String(Date.now());
+        wx.setStorageSync('hold_ble_session_id', sessionId);
+        if (self.app && self.app.globalData) {
+          self.app.globalData.bleSession = {
+            deviceName: self.data.deviceName,
+            deviceId: deviceId,
+            serviceId: serviceId,
+            eventCharacteristicId: characteristicId,
+            commandCharacteristicId: self.data.commandCharacteristicId,
+            adapterStatus: '链路已打通，可发送呼吸或校准命令',
+            connectionStatus: '已订阅硬件通知',
+            canSendCommand: true,
+            sessionId: sessionId
+          };
+        }
       },
       fail: function (error) {
         holdLog('NOTIFY_ERROR', error);
-        self.setData({ connectionStatus: '订阅失败: ' + errorText(error) });
+        self.setData({ connectionStatus: '订阅失败: ' + errorText(error), canSendCommand: false });
+        if (self.app && self.app.globalData) self.app.globalData.bleSession = null;
       }
     });
   },
 
-  sendCommand: function (command) {
+  sendCommand: function (command, callbacks) {
+    callbacks = callbacks || {};
     if (!this.data.canSendCommand) {
       this.setData({ connectionStatus: '未连接命令特征，不能发送' });
+      if (callbacks.fail) callbacks.fail({ errMsg: 'BLE command characteristic unavailable' });
       return;
     }
     wx.writeBLECharacteristicValue({
@@ -455,11 +579,13 @@ Page({
       value: stringToArrayBuffer(command),
       success: function () {
         holdLog('COMMAND', command);
-        this.setData({ connectionStatus: '已发送 ' + command });
+        if (this.pageVisible) this.setData({ connectionStatus: '已发送 ' + command });
+        if (callbacks.success) callbacks.success();
       }.bind(this),
       fail: function (error) {
         holdLog('COMMAND_ERROR', { command: command, error: error });
-        this.setData({ connectionStatus: '发送失败: ' + errorText(error) });
+        if (this.pageVisible) this.setData({ connectionStatus: '发送失败: ' + errorText(error) });
+        if (callbacks.fail) callbacks.fail(error);
       }.bind(this)
     });
   },
@@ -470,10 +596,25 @@ Page({
 
   startCalibration: function () {
     this.setData({
-      calibrationRunning: true,
-      signalStatus: '校准命令已发送，等待硬件回传'
+      signalStatus: '正在发送校准命令',
+      calibrationGuide: '请保持坐姿稳定，不要说话或大幅移动，等待设备震动提示。'
     });
-    this.sendCommand('calibrate_start');
+    this.sendCommand('calibrate_start', {
+      success: function () {
+        this.setData({
+          calibrationRunning: true,
+          signalStatus: '校准命令已发送，等待硬件回传',
+          calibrationGuide: '校准中：保持佩戴贴合，自然呼吸 10-15 秒；完成后这里会显示结果。'
+        });
+      }.bind(this),
+      fail: function (error) {
+        this.setData({
+          calibrationRunning: false,
+          signalStatus: '校准发送失败：' + errorText(error),
+          calibrationGuide: '没有写入命令。请先确认蓝牙仍连接，再重新点基础校准。'
+        });
+      }.bind(this)
+    });
   },
 
   handleNotifyMessage: function (result) {
@@ -482,13 +623,11 @@ Page({
       var waveParts = rawText.split(',');
       var waveIr = Number(waveParts[1] || 0);
       var wavePressure = Number(waveParts[2]);
-      if (this.pageVisible && isFinite(wavePressure)) {
-        this.appendWavePoint({ pp: waveIr > 0 ? 1 : 0, ir: waveIr, pr: wavePressure });
+      var wavePayload = cacheLiveWave(this.app, waveIr, wavePressure);
+      if (wavePayload && this.pageVisible) {
+        this.appendWavePoint(wavePayload);
       }
       return;
-    }
-    if (this.notifyBuffer && rawText.charAt(0) === '{') {
-      this.notifyBuffer = '';
     }
     var batch = takeJsonMessages(this.notifyBuffer, rawText);
     var self = this;
@@ -520,7 +659,8 @@ Page({
         calibrationRunning = false;
       }
 
-      cacheTelemetry(payload);
+      var cachedAt = cacheTelemetry(payload);
+      cacheLiveWave(self.app, payload.ir, payload.pr);
       if (self.pageVisible) {
         self.appendWavePoint(payload);
       }
@@ -535,6 +675,8 @@ Page({
           ppg: payload.pp,
           imu: payload.mr,
           pressure: payload.pr,
+          breath: payload.br,
+          breathSource: payload.bs,
           cached: true,
           cloud: eventType === 'button_press' ? 'submit' : 'not-used'
         });
@@ -545,11 +687,27 @@ Page({
           pressCount: Number(payload.press_count || payload.bc || self.data.pressCount || 0),
           breathRunning: present(payload.bg) ? Number(payload.bg) === 1 : Boolean(payload.breath_enabled),
           calibrationRunning: calibrationRunning,
-          hapticReady: hasAny(payload, ['hp', 'haptic_ready']),
-          signalStatus: eventType === 'cal_done' || eventType === 'calibration_done' ? '基础校准完成，数据链路已解析' : buildSignalSummary(payload).text,
+          hapticReady: present(payload.hp) ? Number(payload.hp) === 1 : Boolean(payload.haptic_ready),
+          breathRate: present(payload.br) ? payload.br : '--',
+          heartRate: present(payload.hr) ? payload.hr : '--',
+          motionState: motionText(payload),
+          pressureRaw: present(payload.pr) ? payload.pr : '--',
+          pressureLevel: present(payload.pl) ? payload.pl : '--',
+          ppgIr: present(payload.ir) ? payload.ir : '--',
+          ppgRed: present(payload.red) ? payload.red : '--',
+          bodyTemperature: Number(payload.mr || 0) === 1 && present(payload.bt) ? payload.bt : '--',
+          wearState: present(payload.wear) ? (Number(payload.wear) === 1 ? '已佩戴' : '未佩戴') : '等待数据',
+          signalStatus: eventType === 'cal_done' || eventType === 'calibration_done'
+            ? '基础校准完成，数据链路已解析；呼吸：' + breathDetectorText(payload)
+            : buildSignalSummary(payload).text + '；呼吸：' + breathDetectorText(payload),
+          calibrationGuide: eventType === 'cal_done' || eventType === 'calibration_done'
+            ? '校准完成：现在可以看实时波形，或开始一次呼吸引导做前后对比。'
+            : (calibrationRunning ? '校准中：继续自然呼吸，尽量不要移动设备。' : self.data.calibrationGuide),
           lastEventTime: new Date().toLocaleString(),
           lastEventRaw: message,
           localRecordStatus: '已写入本地记录，序号 ' + (payload.seq || '--'),
+          cloudStatus: eventType === 'button_press' ? self.data.cloudStatus : '遥测无需云函数',
+          storagePath: eventType === 'button_press' ? self.data.storagePath : 'hold_telemetry_samples',
           connectionStatus: '已收到硬件数据'
         });
       }
@@ -557,11 +715,32 @@ Page({
       if (eventType === 'button_press') {
         self.submitEventToCloud(payload);
       }
+      if (eventType === 'b_stop' || eventType === 'breath_stop' || eventType === 'breath_stopped') {
+        wx.setStorageSync('hold_pending_intervention_stop', {
+          stopAt: cachedAt,
+          sessionId: wx.getStorageSync('hold_ble_session_id') || ''
+        });
+        archiveLatestMeasurement(cachedAt);
+      } else if (eventType === 'tel') {
+        var pending = wx.getStorageSync('hold_pending_intervention_stop') || {};
+        var pendingStop = Number(pending.stopAt || pending || 0);
+        var currentSessionId = wx.getStorageSync('hold_ble_session_id') || '';
+        if (pendingStop && pending.sessionId && pending.sessionId !== currentSessionId) {
+          wx.removeStorageSync('hold_pending_intervention_stop');
+        } else if (pendingStop && cachedAt - pendingStop >= 30000) {
+          var archived = archiveLatestMeasurement(pendingStop);
+          if (archived && archived.comparison && archived.comparison.ready) {
+            wx.removeStorageSync('hold_pending_intervention_stop');
+          }
+        }
+      }
     });
   },
 
   appendWavePoint: function (payload) {
     var hasPpg = Number(payload.pp || 0) === 1 && numericPositive(payload.ir);
+    var hasPressure = Number(payload.ps || 0) === 1 && isFinite(Number(payload.pr));
+    if (!hasPpg && !hasPressure) return;
     var source = hasPpg ? 'PPG 红外原始波形' : '压力原始波形';
     var value = Number(hasPpg ? payload.ir : payload.pr);
     if (!isFinite(value)) {
@@ -676,7 +855,13 @@ Page({
           breathRunning: false,
           calibrationRunning: false
         });
+        if (self.app && self.app.globalData) {
+          self.app.globalData.bleSession = null;
+        }
+        wx.removeStorageSync('hold_ble_session_id');
+        wx.removeStorageSync('hold_pending_intervention_stop');
       }
     });
   }
 });
+

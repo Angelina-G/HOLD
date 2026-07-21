@@ -20,10 +20,13 @@
 #include <BLEUtils.h>
 #include <math.h>
 #include <Wire.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/semphr.h>
 
 #include <Adafruit_DRV2605.h>
 
 #include "heart_rate_estimator.h"
+#include "imu_respiration_estimator.h"
 #include "max30102_raw_reader.h"
 #include "pressure_film_raw_reader.h"
 #include "project_config.h"
@@ -39,7 +42,7 @@ constexpr unsigned long kStartupDelayMs = 300;
 constexpr unsigned long kSerialAttachWaitMs = 1500;
 constexpr unsigned long kStatusLogIntervalMs = 200;
 constexpr unsigned long kBleNotifyIntervalMs = 500;
-constexpr unsigned long kBleWaveNotifyIntervalMs = 50;
+constexpr unsigned long kBleWaveNotifyIntervalMs = 200;
 constexpr size_t kBleNotifyChunkBytes = 18;
 constexpr unsigned long kBleNotifyChunkGapMs = 12;
 constexpr unsigned long kMpuPollIntervalMs = 20;
@@ -59,6 +62,7 @@ constexpr float kGyroScaleLsbPerDps = 131.0f;
 
 constexpr unsigned long kHapticToggleIntervalMs = 700;
 constexpr unsigned long kBreathHapticStepMs = 120;
+constexpr unsigned long kBreathGuideDurationMs = 60000;
 constexpr unsigned long kCalibrationDurationMs = 12000;
 constexpr unsigned long kCalibrationPulseMs = 250;
 constexpr uint8_t kSecondaryI2cSdaPin = 43;
@@ -111,35 +115,41 @@ struct ImuIdentity {
   float temperatureOffset;
 };
 
-class RespirationEstimator {
+class PressureRespirationEstimator {
  public:
   void reset() {
     initialized_ = false;
+    belowThresholdArmed_ = false;
+    baselineSignal_ = 0.0f;
     smoothedSignal_ = 0.0f;
-    previousSignal_ = 0.0f;
     lastCrossingAtMs_ = 0;
     bpm_ = 0.0f;
   }
 
-  void addPressureSample(const PressureFilmRawReader::Sample& sample, uint16_t baselineRaw, uint16_t peakDeltaRaw) {
-    const float signal = static_cast<float>(sample.rawAverage) - static_cast<float>(baselineRaw);
+  void addPressureSample(const PressureFilmRawReader::Sample& sample, uint16_t peakDeltaRaw) {
+    const float rawSignal = static_cast<float>(sample.rawAverage);
     if (!initialized_) {
       initialized_ = true;
-      smoothedSignal_ = signal;
-      previousSignal_ = signal;
+      baselineSignal_ = rawSignal;
+      smoothedSignal_ = 0.0f;
       return;
     }
 
+    baselineSignal_ += (rawSignal - baselineSignal_) * 0.002f;
+    const float signal = rawSignal - baselineSignal_;
     smoothedSignal_ = smoothedSignal_ * 0.88f + signal * 0.12f;
-    const float threshold = constrain(static_cast<float>(peakDeltaRaw) * 0.18f, 10.0f, 80.0f);
-    const bool crossedUp = previousSignal_ < -threshold && smoothedSignal_ >= threshold;
-    previousSignal_ = smoothedSignal_;
+    const float threshold = constrain(static_cast<float>(peakDeltaRaw) * 0.015f, 8.0f, 40.0f);
+    if (smoothedSignal_ <= -threshold) {
+      belowThresholdArmed_ = true;
+    }
+    const bool crossedUp = belowThresholdArmed_ && smoothedSignal_ >= threshold;
     if (!crossedUp) {
       if (lastCrossingAtMs_ > 0 && sample.capturedAtMs - lastCrossingAtMs_ > 15000UL) {
         bpm_ = 0.0f;
       }
       return;
     }
+    belowThresholdArmed_ = false;
 
     if (lastCrossingAtMs_ > 0) {
       const unsigned long periodMs = sample.capturedAtMs - lastCrossingAtMs_;
@@ -157,15 +167,17 @@ class RespirationEstimator {
 
  private:
   bool initialized_ = false;
+  bool belowThresholdArmed_ = false;
+  float baselineSignal_ = 0.0f;
   float smoothedSignal_ = 0.0f;
-  float previousSignal_ = 0.0f;
   unsigned long lastCrossingAtMs_ = 0;
   float bpm_ = 0.0f;
 };
 
 Max30102RawReader ppgReader;
 HeartRateEstimator heartRateEstimator;
-RespirationEstimator respirationEstimator;
+ImuRespirationEstimator imuRespirationEstimator;
+PressureRespirationEstimator pressureRespirationEstimator;
 PressureFilmRawReader pressureReader;
 Adafruit_DRV2605 hapticDriver;
 TwoWire secondaryWire(1);
@@ -173,6 +185,7 @@ TwoWire* sensorWire = &Wire;
 TwoWire* hapticWire = &Wire;
 BLECharacteristic* bleEventCharacteristic = nullptr;
 BLECharacteristic* bleCommandCharacteristic = nullptr;
+SemaphoreHandle_t bleNotifyMutex = nullptr;
 
 bool mpuReady = false;
 bool ppgReady = false;
@@ -204,11 +217,95 @@ unsigned long lastBleNotifyAtMs = 0;
 unsigned long lastBleWaveNotifyAtMs = 0;
 unsigned long lastReconnectAtMs = 0;
 unsigned long lastHapticToggleAtMs = 0;
+volatile unsigned long breathGuideStartedAtMs = 0;
 volatile unsigned long calibrationStartedAtMs = 0;
 unsigned long lastLedRunnerAtMs = 0;
 unsigned long lastBoardHeartbeatAtMs = 0;
 uint32_t lastPpgSequence = 0;
 uint32_t bleNotifySequence = 0;
+
+bool runImuRespirationSelfTest() {
+  ImuRespirationEstimator estimator;
+  estimator.reset(0);
+  for (uint32_t atMs = 0; atMs <= 35000; atMs += kMpuPollIntervalMs) {
+    ImuRespirationEstimator::Sample sample;
+    sample.capturedAtMs = atMs;
+    sample.accelZg = 1.0f + 0.02f * sinf(2.0f * PI * static_cast<float>(atMs) / 5000.0f);
+    estimator.addSample(sample);
+  }
+  const bool detected = estimator.bpm() >= 11.0f && estimator.bpm() <= 13.0f;
+  ImuRespirationEstimator::Sample motionSample;
+  motionSample.capturedAtMs = 35020;
+  motionSample.accelZg = 1.0f;
+  motionSample.gyroXdps = 50.0f;
+  estimator.addSample(motionSample);
+  const bool motionRejected = estimator.bpm() == 0.0f;
+
+  ImuRespirationEstimator crossAxisEstimator;
+  crossAxisEstimator.reset(0);
+  for (uint32_t atMs = 0; atMs <= 35000; atMs += kMpuPollIntervalMs) {
+    ImuRespirationEstimator::Sample sample;
+    sample.capturedAtMs = atMs;
+    sample.accelXg = 0.02f * sinf(2.0f * PI * static_cast<float>(atMs) / 5000.0f);
+    sample.accelZg = 1.0f;
+    crossAxisEstimator.addSample(sample);
+  }
+  ImuRespirationEstimator lowAmplitudeEstimator;
+  lowAmplitudeEstimator.reset(0);
+  for (uint32_t atMs = 0; atMs <= 40000; atMs += kMpuPollIntervalMs) {
+    ImuRespirationEstimator::Sample sample;
+    sample.capturedAtMs = atMs;
+    sample.accelZg = 1.0f + 0.003f * sinf(2.0f * PI * static_cast<float>(atMs) / 5000.0f);
+    lowAmplitudeEstimator.addSample(sample);
+  }
+  const bool lowAmplitudeDetected = lowAmplitudeEstimator.bpm() >= 11.0f &&
+      lowAmplitudeEstimator.bpm() <= 13.0f;
+  ImuRespirationEstimator fastBreathEstimator;
+  fastBreathEstimator.reset(0);
+  for (uint32_t atMs = 0; atMs <= 25000; atMs += kMpuPollIntervalMs) {
+    ImuRespirationEstimator::Sample sample;
+    sample.capturedAtMs = atMs;
+    sample.accelZg = 1.0f + 0.02f * sinf(2.0f * PI * static_cast<float>(atMs) / 1667.0f);
+    fastBreathEstimator.addSample(sample);
+  }
+  const bool fastBreathDetected = fastBreathEstimator.bpm() >= 34.0f &&
+      fastBreathEstimator.bpm() <= 38.0f;
+
+  ImuRespirationEstimator staleEstimator;
+  staleEstimator.reset(0);
+  for (uint32_t atMs = 0; atMs <= 35000; atMs += kMpuPollIntervalMs) {
+    ImuRespirationEstimator::Sample sample;
+    sample.capturedAtMs = atMs;
+    sample.accelZg = 1.0f + 0.02f * sinf(2.0f * PI * static_cast<float>(atMs) / 5000.0f);
+    staleEstimator.addSample(sample);
+  }
+  for (uint32_t atMs = 35020; atMs <= 52000; atMs += kMpuPollIntervalMs) {
+    ImuRespirationEstimator::Sample sample;
+    sample.capturedAtMs = atMs;
+    sample.accelZg = 1.0f;
+    staleEstimator.addSample(sample);
+  }
+  const bool staleCandidateExpired = staleEstimator.bpm() == 0.0f &&
+      staleEstimator.candidateBpm() == 0.0f && staleEstimator.consistentCycleCount() == 0;
+
+  ImuRespirationEstimator relearnEstimator;
+  relearnEstimator.reset(0);
+  for (uint32_t atMs = 0; atMs <= 36000; atMs += kMpuPollIntervalMs) {
+    ImuRespirationEstimator::Sample sample;
+    sample.capturedAtMs = atMs;
+    if (atMs <= 3000) {
+      sample.accelXg = 0.03f * sinf(2.0f * PI * static_cast<float>(atMs) / 400.0f);
+    } else {
+      sample.accelZg = 1.0f + 0.012f * sinf(2.0f * PI * static_cast<float>(atMs) / 5000.0f);
+    }
+    relearnEstimator.addSample(sample);
+  }
+  const bool relearnedAxis = relearnEstimator.axis() == 'z' &&
+      relearnEstimator.bpm() >= 11.0f && relearnEstimator.bpm() <= 13.0f;
+  return detected && motionRejected && crossAxisEstimator.axis() == 'x' &&
+      crossAxisEstimator.bpm() >= 11.0f && crossAxisEstimator.bpm() <= 13.0f &&
+      lowAmplitudeDetected && fastBreathDetected && staleCandidateExpired && relearnedAxis;
+}
 
 MpuSample lastMpuSample{};
 MpuMetrics lastMpuMetrics{};
@@ -304,7 +401,7 @@ const char* guidePhaseLabel() {
   if (!breathGuideEnabled) {
     return "n";
   }
-  return breathHapticStep < 20 ? "i" : "e";
+  return (breathHapticStep % 40) < 20 ? "i" : "e";
 }
 
 const char* packetTypeAlias(const char* packetType) {
@@ -323,7 +420,26 @@ String buildBleStatusJson(const char* packetType) {
   payload += "\",\"seq\":";
   payload += String(++bleNotifySequence);
   payload += ",\"br\":";
-  payload += (respirationEstimator.bpm() > 0.0f ? String(respirationEstimator.bpm(), 1) : "0");
+  const float imuBreathBpm = mpuReady && !breathGuideEnabled && !calibrationRunning && !hapticOutputEnabled
+      ? imuRespirationEstimator.bpm()
+      : 0.0f;
+  const bool wearSignalPresent = heartRateEstimator.contactPresent() || lastPressureSample.level > 0 || imuBreathBpm > 0.0f;
+  const float pressureBreathBpm = pressureReady && wearSignalPresent && !breathGuideEnabled && !calibrationRunning && !hapticOutputEnabled
+      ? pressureRespirationEstimator.bpm()
+      : 0.0f;
+  const float breathBpm = imuBreathBpm > 0.0f ? imuBreathBpm : pressureBreathBpm;
+  payload += (breathBpm > 0.0f ? String(breathBpm, 1) : "0");
+  payload += ",\"bs\":\"";
+  payload += imuBreathBpm > 0.0f ? "imu" : (pressureBreathBpm > 0.0f ? "pressure" : "none");
+  payload += "\"";
+  payload += ",\"bd\":\"";
+  payload += imuRespirationEstimator.status();
+  payload += "\",\"bx\":";
+  payload += String(imuRespirationEstimator.candidateBpm(), 1);
+  payload += ",\"bn\":";
+  payload += String(imuRespirationEstimator.consistentCycleCount());
+  payload += ",\"ba\":";
+  payload += String(imuRespirationEstimator.cycleThresholdG(), 4);
   payload += ",\"hr\":";
   payload += (heartRateEstimator.hasValidBpm() ? String(heartRateEstimator.bpm(), 1) : "0");
   payload += ",\"bt\":";
@@ -364,7 +480,7 @@ String buildBleStatusJson(const char* packetType) {
   payload += ",\"ct\":";
   payload += (heartRateEstimator.contactPresent() ? "1" : "0");
   payload += ",\"wear\":";
-  payload += ((heartRateEstimator.contactPresent() || lastPressureSample.level > 0) ? "1" : "0");
+  payload += (wearSignalPresent ? "1" : "0");
   payload += ",\"cc\":";
   payload += (calibrationCompleted ? "1" : "0");
   payload += "}";
@@ -376,11 +492,19 @@ void notifyBlePayload(const String& payload) {
     return;
   }
 
+  if (bleNotifyMutex != nullptr && xSemaphoreTake(bleNotifyMutex, pdMS_TO_TICKS(1000)) != pdTRUE) {
+    Serial.println("[ble][warn] notify mutex timeout");
+    return;
+  }
+
   for (size_t offset = 0; offset < payload.length(); offset += kBleNotifyChunkBytes) {
     const String chunk = payload.substring(offset, offset + kBleNotifyChunkBytes);
     bleEventCharacteristic->setValue(chunk.c_str());
     bleEventCharacteristic->notify();
     delay(kBleNotifyChunkGapMs);
+  }
+  if (bleNotifyMutex != nullptr) {
+    xSemaphoreGive(bleNotifyMutex);
   }
 }
 
@@ -389,12 +513,8 @@ void notifyBleStatus(const char* packetType) {
 }
 
 void notifyBleWave() {
-  if (bleEventCharacteristic == nullptr || !bleClientConnected) {
-    return;
-  }
   const String payload = "W," + String(lastPpgSample.ir) + "," + String(lastPressureSample.rawAverage);
-  bleEventCharacteristic->setValue(payload.c_str());
-  bleEventCharacteristic->notify();
+  notifyBlePayload(payload);
 }
 
 void notifyCalibrationDoneBurst() {
@@ -407,6 +527,7 @@ void notifyCalibrationDoneBurst() {
 
 void stopGuidedFeedback() {
   breathGuideEnabled = false;
+  breathGuideStartedAtMs = 0;
   calibrationRunning = false;
   setHapticRtp(0);
 }
@@ -416,8 +537,10 @@ void handleBleCommand(const String& command) {
   if (command.indexOf("breath_start") >= 0) {
     calibrationRunning = false;
     calibrationCompleted = false;
-    respirationEstimator.reset();
+    imuRespirationEstimator.reset(millis());
+    pressureRespirationEstimator.reset();
     breathGuideEnabled = true;
+    breathGuideStartedAtMs = millis();
     breathHapticStep = 0;
     lastHapticToggleAtMs = 0;
     notifyBleStatus("breath_started");
@@ -433,7 +556,8 @@ void handleBleCommand(const String& command) {
   if (command.indexOf("calibrate_start") >= 0) {
     breathGuideEnabled = false;
     calibrationCompleted = false;
-    respirationEstimator.reset();
+    imuRespirationEstimator.reset(millis());
+    pressureRespirationEstimator.reset();
     calibrationStartedAtMs = millis();
     lastHapticToggleAtMs = 0;
     calibrationRunning = true;
@@ -806,6 +930,8 @@ void pollMpu() {
   MpuSample sample;
   if (!mpuReady || !readMpuSample(activeMpuAddress, sample)) {
     mpuReady = false;
+    lastMpuMetrics = {};
+    imuRespirationEstimator.reset(millis());
     return;
   }
 
@@ -817,6 +943,19 @@ void pollMpu() {
   lastMpuMetrics.gyroYdps = convertGyroToDegreesPerSecond(sample.gyroY);
   lastMpuMetrics.gyroZdps = convertGyroToDegreesPerSecond(sample.gyroZ);
   lastMpuMetrics.temperatureC = convertTemperatureCelsius(sample.temperatureRaw);
+  ImuRespirationEstimator::Sample respirationSample;
+  respirationSample.capturedAtMs = sample.capturedAtMs;
+  respirationSample.accelXg = lastMpuMetrics.accelXg;
+  respirationSample.accelYg = lastMpuMetrics.accelYg;
+  respirationSample.accelZg = lastMpuMetrics.accelZg;
+  respirationSample.gyroXdps = lastMpuMetrics.gyroXdps;
+  respirationSample.gyroYdps = lastMpuMetrics.gyroYdps;
+  respirationSample.gyroZdps = lastMpuMetrics.gyroZdps;
+  if (breathGuideEnabled || calibrationRunning || hapticOutputEnabled) {
+    imuRespirationEstimator.reset(sample.capturedAtMs);
+  } else {
+    imuRespirationEstimator.addSample(respirationSample);
+  }
 }
 
 void pollPpg() {
@@ -824,7 +963,16 @@ void pollPpg() {
     return;
   }
 
-  ppgReader.update();
+  if (!ppgReader.update()) {
+    // An empty FIFO is normal between MAX30102 samples; only explicit read
+    // errors mean the device is offline.
+    if (strcmp(ppgReader.lastError(), "ok") != 0) {
+      ppgReady = false;
+      lastPpgSample = {};
+      heartRateEstimator.reset();
+    }
+    return;
+  }
 
   Max30102RawReader::Sample sample;
   if (!ppgReader.readLatestSample(sample)) {
@@ -843,14 +991,19 @@ void pollPpg() {
 void pollPressure() {
   if (!pressureReady || !pressureReader.update()) {
     pressureReady = false;
+    lastPressureSample = {};
+    pressureRespirationEstimator.reset();
     return;
   }
 
   pressureReader.readLatestSample(lastPressureSample);
-  respirationEstimator.addPressureSample(
-      lastPressureSample,
-      pressureReader.baselineRaw(),
-      pressureReader.peakDeltaRaw());
+  if (breathGuideEnabled || calibrationRunning || hapticOutputEnabled) {
+    pressureRespirationEstimator.reset();
+  } else {
+    pressureRespirationEstimator.addPressureSample(
+        lastPressureSample,
+        pressureReader.peakDeltaRaw());
+  }
 }
 
 void updateHapticPattern(unsigned long nowMs) {
@@ -876,6 +1029,11 @@ void updateHapticPattern(unsigned long nowMs) {
   }
 
   if (breathGuideEnabled) {
+    if (breathGuideStartedAtMs > 0 && nowMs - breathGuideStartedAtMs >= kBreathGuideDurationMs) {
+      stopGuidedFeedback();
+      notifyBleStatus("breath_stopped");
+      return;
+    }
     if (nowMs - lastHapticToggleAtMs < kBreathHapticStepMs) {
       return;
     }
@@ -926,8 +1084,10 @@ void tryReconnectAll(unsigned long nowMs) {
 void printStatus(unsigned long nowMs) {
   refreshI2cVisibility();
 
+  const float imuBreathBpm = imuRespirationEstimator.bpm();
+  const float pressureBreathBpm = pressureRespirationEstimator.bpm();
   Serial.printf(
-    "[smoke] up=%lums | i2c 57=%c 68=%c 69=%c 5A=%c | imu=%s model=%s ax=%0.3f ay=%0.3f az=%0.3f gx=%0.1f gy=%0.1f gz=%0.1f temp=%0.2f | ppg=%s err=%s ir=%lu red=%lu bpm=%0.1f beat=%s contact=%s | pressure=%s raw=%u level=%u | motor=%s rtp=%u | heater=%s pin=GPIO%u ctrl_only | led=%s\n",
+    "[smoke] up=%lums | i2c 57=%c 68=%c 69=%c 5A=%c | imu=%s model=%s ax=%0.3f ay=%0.3f az=%0.3f gx=%0.1f gy=%0.1f gz=%0.1f temp=%0.2f | ppg=%s err=%s ir=%lu red=%lu bpm=%0.1f beat=%s contact=%s | pressure=%s raw=%u level=%u | breath=%0.1f src=%s imu=%0.1f pressure=%0.1f axis=%c gate=%c signal=%0.4f status=%s candidate=%0.1f cycles=%u threshold=%0.4f | motor=%s rtp=%u | heater=%s pin=GPIO%u ctrl_only | led=%s\n",
       nowMs,
       visibleFlag(max30102Seen),
       visibleFlag(mpuAddressLowSeen),
@@ -952,6 +1112,17 @@ void printStatus(unsigned long nowMs) {
       pressureReady ? "OK" : "MISS",
       static_cast<unsigned>(lastPressureSample.rawAverage),
       static_cast<unsigned>(lastPressureSample.level),
+      imuBreathBpm > 0.0f ? imuBreathBpm : pressureBreathBpm,
+      imuBreathBpm > 0.0f ? "imu" : (pressureBreathBpm > 0.0f ? "pressure" : "none"),
+      imuBreathBpm,
+      pressureBreathBpm,
+      imuRespirationEstimator.axis(),
+      imuRespirationEstimator.motionGated() ? 'Y' : 'N',
+      imuRespirationEstimator.signalG(),
+      imuRespirationEstimator.status(),
+      imuRespirationEstimator.candidateBpm(),
+      static_cast<unsigned>(imuRespirationEstimator.consistentCycleCount()),
+      imuRespirationEstimator.cycleThresholdG(),
       hapticReady ? (hapticOutputEnabled ? "ON" : "OFF") : "MISS",
       static_cast<unsigned>(currentHapticRtp),
       heaterEnabled ? "PWM80" : "WAIT",
@@ -967,7 +1138,9 @@ void setup() {
   pulseBoardLed(1);
 
   Serial.begin(kSerialBaudRate);
+  bleNotifyMutex = xSemaphoreCreateMutex();
   delay(kStartupDelayMs);
+  Serial.printf("[self-test] imu-respiration=%s\n", runImuRespirationSelfTest() ? "PASS" : "FAIL");
 
   const unsigned long serialAttachStartedAtMs = millis();
   while (!Serial && (millis() - serialAttachStartedAtMs) < kSerialAttachWaitMs) {

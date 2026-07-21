@@ -27,9 +27,11 @@ Page({
 
   refreshAnalysis() {
     const dailyAnalyses = getDailyAnalyses();
+    const activeIndex = Math.min(this.data.activeIndex, Math.max(0, dailyAnalyses.length - 1));
     this.setData({
       dailyAnalyses,
-      activeDay: dailyAnalyses[0]
+      activeIndex,
+      activeDay: dailyAnalyses[activeIndex]
     });
   },
 
