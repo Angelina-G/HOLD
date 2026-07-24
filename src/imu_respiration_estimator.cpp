@@ -5,8 +5,8 @@
 namespace {
 constexpr uint32_t kWarmupMs = 3000;
 constexpr uint32_t kAxisRelearnMs = 12000;
-constexpr uint32_t kMinHalfBreathMs = 560;
-constexpr uint32_t kMinBreathIntervalMs = 1300;
+constexpr uint32_t kMinHalfBreathMs = 900;
+constexpr uint32_t kMinBreathIntervalMs = 2500;
 constexpr uint32_t kMaxBreathIntervalMs = 10000;
 constexpr uint32_t kStaleMs = 15000;
 constexpr float kBaselineAlpha = 0.003f;

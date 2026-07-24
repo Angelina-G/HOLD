@@ -66,7 +66,7 @@ void HeartRateEstimator::resetTrackingState(bool clearBeatCount) {
   signal_max_ = 0.0f;
   signal_min_ = 0.0f;
   last_amplitude_ = 0.0f;
-  bpm_ = 0.0f;
+  bpm_ = last_valid_bpm_;
   last_valid_bpm_ = 0.0f;
   last_beat_at_ms_ = 0;
   last_beat_interval_ms_ = 0;

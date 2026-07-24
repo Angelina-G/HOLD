@@ -67,6 +67,7 @@ constexpr unsigned long kCalibrationDurationMs = 12000;
 constexpr unsigned long kCalibrationPulseMs = 250;
 constexpr unsigned long kFingerPressureHoldMs = 3000;
 constexpr uint8_t kFingerPressureLevelThreshold = 6;
+constexpr uint16_t kFingerPressureRawThreshold = 3500;
 constexpr uint8_t kSecondaryI2cSdaPin = 43;
 constexpr uint8_t kSecondaryI2cSclPin = 44;
 constexpr uint8_t kLegacyI2cSdaPin = 3;
@@ -272,8 +273,7 @@ bool runImuRespirationSelfTest() {
     sample.accelZg = 1.0f + 0.02f * sinf(2.0f * PI * static_cast<float>(atMs) / 1667.0f);
     fastBreathEstimator.addSample(sample);
   }
-  const bool fastBreathDetected = fastBreathEstimator.bpm() >= 34.0f &&
-      fastBreathEstimator.bpm() <= 38.0f;
+  const bool fastBreathRejected = fastBreathEstimator.bpm() == 0.0f;
 
   ImuRespirationEstimator staleEstimator;
   staleEstimator.reset(0);
@@ -308,7 +308,7 @@ bool runImuRespirationSelfTest() {
       relearnEstimator.bpm() >= 11.0f && relearnEstimator.bpm() <= 13.0f;
   return detected && motionRejected && crossAxisEstimator.axis() == 'x' &&
       crossAxisEstimator.bpm() >= 11.0f && crossAxisEstimator.bpm() <= 13.0f &&
-      lowAmplitudeDetected && fastBreathDetected && staleCandidateExpired && relearnedAxis;
+      lowAmplitudeDetected && fastBreathRejected && staleCandidateExpired && relearnedAxis;
 }
 
 MpuSample lastMpuSample{};
@@ -445,7 +445,7 @@ String buildBleStatusJson(const char* packetType) {
   payload += ",\"ba\":";
   payload += String(imuRespirationEstimator.cycleThresholdG(), 4);
   payload += ",\"hr\":";
-  payload += (heartRateEstimator.hasValidBpm() ? String(heartRateEstimator.bpm(), 1) : "0");
+  payload += (heartRateEstimator.bpm() > 0.0f ? String(heartRateEstimator.bpm(), 1) : "0");
   payload += ",\"bt\":";
   payload += String(lastMpuMetrics.temperatureC, 1);
   payload += ",\"bc\":";
@@ -1003,7 +1003,10 @@ void pollPressure() {
   }
 
   pressureReader.readLatestSample(lastPressureSample);
-  if (lastPressureSample.level >= kFingerPressureLevelThreshold) {
+  const bool fingerPressureActive =
+      lastPressureSample.level >= kFingerPressureLevelThreshold ||
+      lastPressureSample.rawAverage >= kFingerPressureRawThreshold;
+  if (fingerPressureActive) {
     if (fingerPressureStartedAtMs == 0) {
       fingerPressureStartedAtMs = lastPressureSample.capturedAtMs;
     }
@@ -1129,7 +1132,7 @@ void printStatus(unsigned long nowMs) {
       ppgReader.lastError(),
       static_cast<unsigned long>(lastPpgSample.ir),
       static_cast<unsigned long>(lastPpgSample.red),
-      heartRateEstimator.hasValidBpm() ? heartRateEstimator.bpm() : 0.0f,
+      heartRateEstimator.bpm(),
       heartRateEstimator.beatDetectedRecently() ? "Y" : "N",
       heartRateEstimator.contactPresent() ? "Y" : "N",
       pressureReady ? "OK" : "MISS",

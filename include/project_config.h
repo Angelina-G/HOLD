@@ -78,10 +78,10 @@ constexpr uint8_t kMax30102LedRedPulseAmplitude = 0x3C;
 constexpr uint8_t kMax30102LedIrPulseAmplitude = 0x3C;
 constexpr float kHeartRateDcAlpha = 0.05f;
 constexpr float kHeartRateSignalAlpha = 0.20f;
-constexpr float kHeartRateAmplitudeMin = 120.0f;
+constexpr float kHeartRateAmplitudeMin = 80.0f;
 constexpr unsigned long kHeartRateBeatIntervalMinMs = 300;
 constexpr unsigned long kHeartRateBeatIntervalMaxMs = 2000;
-constexpr unsigned long kHeartRateBeatStaleTimeoutMs = 2500;
+constexpr unsigned long kHeartRateBeatStaleTimeoutMs = 5000;
 constexpr unsigned long kHeartRateFingerLossResetMs = 1500;
 
 }  // namespace project_config
