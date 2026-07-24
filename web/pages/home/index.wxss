@@ -257,20 +257,6 @@
   line-height: 1.55;
 }
 
-.hold-meter {
-  height: 10rpx;
-  margin-top: 18rpx;
-  overflow: hidden;
-  border-radius: 999rpx;
-  background: rgba(184, 154, 246, 0.18);
-}
-
-.hold-fill {
-  height: 100%;
-  border-radius: 999rpx;
-  background: linear-gradient(90deg, #f59b88, #b89af6);
-}
-
 .summary-pill {
   padding: 18rpx;
   border-radius: 20rpx;

@@ -70,9 +70,7 @@ Page({
     wellbeing: {},
     homeOverview: {},
     readinessRing: 0,
-    trendMax: 100,
-    fingerHolding: false,
-    fingerHoldProgress: 0
+    trendMax: 100
   },
 
   onLoad() {
@@ -91,7 +89,6 @@ Page({
 
   onUnload() {
     clearInterval(this.liveTimer);
-    clearInterval(this.fingerHoldTimer);
   },
 
   refreshLiveTelemetry() {
@@ -103,25 +100,9 @@ Page({
     wx.showToast({ title: '胸口 PPG 连续观察中', icon: 'none' });
   },
 
-  startFingerHold() {
-    clearInterval(this.fingerHoldTimer);
-    const startedAt = Date.now();
-    this.setData({ fingerHolding: true, fingerHoldProgress: 0 });
-    this.fingerHoldTimer = setInterval(() => {
-      const progress = Math.min(100, Math.round((Date.now() - startedAt) / 30));
-      this.setData({ fingerHoldProgress: progress });
-      if (progress >= 100) {
-        clearInterval(this.fingerHoldTimer);
-        wx.setStorageSync('hold_ppg_mode', 'finger');
-        wx.navigateTo({ url: '/pages/user-test/index?mode=finger' });
-      }
-    }, 100);
-  },
-
-  cancelFingerHold() {
-    if (this.data.fingerHoldProgress >= 100) return;
-    clearInterval(this.fingerHoldTimer);
-    this.setData({ fingerHolding: false, fingerHoldProgress: 0 });
+  openFingerMode() {
+    wx.setStorageSync('hold_ppg_mode', 'finger');
+    wx.navigateTo({ url: '/pages/user-test/index?mode=finger' });
   },
 
   openActiveHistory() {

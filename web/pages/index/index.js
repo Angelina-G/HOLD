@@ -54,6 +54,18 @@ function numericPositive(value) {
   return Number(value || 0) > 0;
 }
 
+function displayPositive(value) {
+  var number = Number(value || 0);
+  return number > 0 ? value : '--';
+}
+
+function displayBreath(payload) {
+  var breathRate = Number(payload.br || 0);
+  if (breathRate > 0) return payload.br;
+  var candidateRate = Number(payload.bx || 0);
+  return candidateRate > 0 ? candidateRate.toFixed(1) : '--';
+}
+
 function hasAny(payload, keys) {
   for (var index = 0; index < keys.length; index += 1) {
     if (present(payload[keys[index]])) {
@@ -707,8 +719,8 @@ Page({
           breathRunning: present(payload.bg) ? Number(payload.bg) === 1 : Boolean(payload.breath_enabled),
           calibrationRunning: calibrationRunning,
           hapticReady: present(payload.hp) ? Number(payload.hp) === 1 : Boolean(payload.haptic_ready),
-          breathRate: present(payload.br) ? payload.br : '--',
-          heartRate: present(payload.hr) ? payload.hr : '--',
+          breathRate: displayBreath(payload),
+          heartRate: displayPositive(payload.hr),
           motionState: motionText(payload),
           pressureRaw: present(payload.pr) ? payload.pr : '--',
           pressureLevel: present(payload.pl) ? payload.pl : '--',

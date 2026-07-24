@@ -84,6 +84,10 @@ assert.equal(cached.payload.ir, 123700);
 assert.ok(storage.hold_telemetry_samples.length >= 1);
 assert.equal(page.data.storagePath, 'hold_telemetry_samples');
 
+feed({ t: 'tel', seq: 81, pp: 1, p57: 1, ct: 1, mr: 1, mo: 'still', ps: 1, hp: 1, wear: 1, hr: 0, br: 0, bx: 13.2, ir: 123800, red: 46200, pr: 870 });
+assert.equal(page.data.heartRate, '--');
+assert.equal(page.data.breathRate, '13.2');
+
 feedWave(321000, 17);
 assert.equal(app.globalData.liveWave.value, 321000);
 assert.ok(app.globalData.liveWave.points.length > 0);

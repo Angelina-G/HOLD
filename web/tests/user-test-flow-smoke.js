@@ -36,6 +36,17 @@ storage.hold_latest_telemetry = {
 page.refresh();
 assert.equal(page.data.signalGood, true);
 assert.equal(page.data.heartRate, '--');
+page.setData({ ppgMode: 'finger' });
+storage.hold_latest_telemetry = {
+  receivedAt: Date.now(),
+  payload: { pp: 1, ct: 1, fp: 0, ir: 210000, red: 170000, hr: 72, br: 16, mr: 1, mo: 'still' }
+};
+page.refresh();
+assert.equal(page.data.signalGood, false);
+storage.hold_latest_telemetry.payload.fp = 1;
+page.refresh();
+assert.equal(page.data.signalGood, true);
+page.setData({ ppgMode: 'chest' });
 page.startBaseline();
 assert.equal(page.data.stage, 'baseline');
 page.updateStage('guideReady', '基线完成', '准备引导', '');

@@ -65,6 +65,8 @@ constexpr unsigned long kBreathHapticStepMs = 120;
 constexpr unsigned long kBreathGuideDurationMs = 60000;
 constexpr unsigned long kCalibrationDurationMs = 12000;
 constexpr unsigned long kCalibrationPulseMs = 250;
+constexpr unsigned long kFingerPressureHoldMs = 3000;
+constexpr uint8_t kFingerPressureLevelThreshold = 6;
 constexpr uint8_t kSecondaryI2cSdaPin = 43;
 constexpr uint8_t kSecondaryI2cSclPin = 44;
 constexpr uint8_t kLegacyI2cSdaPin = 3;
@@ -223,6 +225,8 @@ unsigned long lastLedRunnerAtMs = 0;
 unsigned long lastBoardHeartbeatAtMs = 0;
 uint32_t lastPpgSequence = 0;
 uint32_t bleNotifySequence = 0;
+unsigned long fingerPressureStartedAtMs = 0;
+bool fingerPressureReady = false;
 
 bool runImuRespirationSelfTest() {
   ImuRespirationEstimator estimator;
@@ -473,6 +477,8 @@ String buildBleStatusJson(const char* packetType) {
   payload += String(lastPressureSample.rawAverage);
   payload += ",\"pl\":";
   payload += String(lastPressureSample.level);
+  payload += ",\"fp\":";
+  payload += (fingerPressureReady ? "1" : "0");
   payload += ",\"ir\":";
   payload += String(lastPpgSample.ir);
   payload += ",\"red\":";
@@ -997,6 +1003,17 @@ void pollPressure() {
   }
 
   pressureReader.readLatestSample(lastPressureSample);
+  if (lastPressureSample.level >= kFingerPressureLevelThreshold) {
+    if (fingerPressureStartedAtMs == 0) {
+      fingerPressureStartedAtMs = lastPressureSample.capturedAtMs;
+    }
+    fingerPressureReady =
+        lastPressureSample.capturedAtMs - fingerPressureStartedAtMs >= kFingerPressureHoldMs;
+  } else {
+    fingerPressureStartedAtMs = 0;
+    fingerPressureReady = false;
+  }
+
   if (breathGuideEnabled || calibrationRunning || hapticOutputEnabled) {
     pressureRespirationEstimator.reset();
   } else {

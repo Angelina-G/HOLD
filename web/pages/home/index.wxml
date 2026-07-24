@@ -43,16 +43,11 @@
         <view class="mode-state peace-text">默认常开</view>
         <view class="mode-copy">用于连续观察心率、呼吸和放松趋势。</view>
       </view>
-      <view class="ppg-mode finger {{fingerHolding ? 'holding' : ''}}"
-        bindtouchstart="startFingerHold"
-        bindtouchend="cancelFingerHold"
-        bindtouchcancel="cancelFingerHold">
+      <view class="ppg-mode finger" bindtap="openFingerMode"
+        >
         <view class="mode-name">指部 PPG</view>
-        <view class="mode-state warm-text">按住 3 秒开始</view>
-        <view class="mode-copy">用于一次更稳定的指尖检测报告。</view>
-        <view class="hold-meter">
-          <view class="hold-fill" style="width: {{fingerHoldProgress}}%"></view>
-        </view>
+        <view class="mode-state warm-text">压敏 3 秒开始</view>
+        <view class="mode-copy">进入后用手指压住硬件压敏，设备会自动确认指部采集。</view>
       </view>
     </view>
   </view>

@@ -14,9 +14,10 @@ function latestSignal() {
   const rawPpg = Number(payload.ir || 0) > 0 || Number(payload.red || 0) > 0;
   const contactReady = Number(payload.ct || 0) === 1 || rawPpg;
   const ppgGood = fresh && Number(payload.pp || 0) === 1 && contactReady;
+  const fingerPressed = Number(payload.fp || 0) === 1;
   const still = Number(payload.mr || 0) === 1 && String(payload.mo || '').toLowerCase() === 'still';
   const breathRate = Number(payload.br || 0);
-  return { cached, payload, fresh, heartRate, breathRate, ppgGood, heartReady, still };
+  return { cached, payload, fresh, heartRate, breathRate, ppgGood, fingerPressed, heartReady, still };
 }
 
 Page({
@@ -55,7 +56,7 @@ Page({
       ppgMode,
       ppgModeLabel: ppgMode === 'finger' ? '指部 PPG 主动检测' : '胸口 PPG 连续模式',
       instruction: ppgMode === 'finger'
-        ? '手指轻轻压住 PPG 传感器，保持 3 秒后的稳定贴合。'
+        ? '手指压住硬件压敏 3 秒，设备确认后再保持静止采集。'
         : '胸口传感器贴紧皮肤，保持坐姿稳定。'
     });
     const saved = wx.getStorageSync(FLOW_KEY);
@@ -83,12 +84,16 @@ Page({
     const signal = latestSignal();
     const session = this.app && this.app.globalData ? this.app.globalData.bleSession : null;
     const connected = Boolean(session && session.canSendCommand);
-    const signalGood = connected && signal.ppgGood && signal.still;
+    const fingerModeWaiting = this.data.ppgMode === 'finger' && !signal.fingerPressed;
+    const signalGood = connected && signal.ppgGood && signal.still && !fingerModeWaiting;
     let signalLabel = connected ? '正在确认佩戴' : '等待设备连接';
     let signalDetail = connected ? '请贴紧 PPG 并保持身体静止。' : '先进入调试页完成一次扫描连接。';
     if (connected && !signal.fresh) {
       signalLabel = '等待实时数据';
       signalDetail = '连接已建立，正在等待硬件遥测。';
+    } else if (connected && signal.fresh && fingerModeWaiting) {
+      signalLabel = '压住压敏 3 秒';
+      signalDetail = '不用长按屏幕；用手指压住硬件压敏，等设备确认后开始。';
     } else if (connected && signal.fresh && !signal.ppgGood) {
       signalLabel = '请调整 PPG 贴合';
       signalDetail = '轻压传感器，直到心率信号稳定出现。';
