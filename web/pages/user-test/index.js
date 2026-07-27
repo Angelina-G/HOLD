@@ -119,6 +119,10 @@ Page({
 
     if (this.data.stage === 'guide') this.syncGuidePhase(signal.payload.ph);
     if (this.data.stageStartedAt) this.tickStage();
+    if (this.data.ppgMode === 'finger' && this.data.stage === 'ready' && signalGood && !this.autoStarted) {
+      this.autoStarted = true;
+      this.startBaseline();
+    }
   },
 
   tickStage() {
@@ -236,6 +240,7 @@ Page({
 
   restart() {
     wx.removeStorageSync(FLOW_KEY);
+    this.autoStarted = false;
     this.setData({
       stage: 'ready', stepLabel: '准备', title: '先确认佩戴与连接',
       instruction: '传感器贴紧皮肤，保持坐姿稳定。', secondsLeft: 0,

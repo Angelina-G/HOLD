@@ -5,10 +5,10 @@
 namespace {
 constexpr uint32_t kWarmupMs = 3000;
 constexpr uint32_t kAxisRelearnMs = 12000;
-constexpr uint32_t kMinHalfBreathMs = 900;
-constexpr uint32_t kMinBreathIntervalMs = 2500;
+constexpr uint32_t kMinHalfBreathMs = 1100;
+constexpr uint32_t kMinBreathIntervalMs = 3000;
 constexpr uint32_t kMaxBreathIntervalMs = 10000;
-constexpr uint32_t kStaleMs = 15000;
+constexpr uint32_t kStaleMs = 20000;
 constexpr float kBaselineAlpha = 0.003f;
 constexpr float kSmoothAlpha = 0.18f;
 constexpr float kDetectionAlpha = 0.12f;
@@ -209,7 +209,7 @@ void ImuRespirationEstimator::acceptTrough(uint32_t atMs, float valueG) {
 
   candidateBpm_ = candidateBpm_ * 0.70f + instantBpm * 0.30f;
   if (consistentCycleCount_ < 255) ++consistentCycleCount_;
-  if (consistentCycleCount_ >= 2) {
+  if (consistentCycleCount_ >= 3) {
     bpm_ = bpm_ <= 0.0f ? candidateBpm_ : bpm_ * 0.70f + candidateBpm_ * 0.30f;
     lastAcceptedAtMs_ = atMs;
   }

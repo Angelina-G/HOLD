@@ -156,7 +156,7 @@ class PressureRespirationEstimator {
 
     if (lastCrossingAtMs_ > 0) {
       const unsigned long periodMs = sample.capturedAtMs - lastCrossingAtMs_;
-      if (periodMs >= 2500UL && periodMs <= 10000UL) {
+      if (periodMs >= 3000UL && periodMs <= 10000UL) {
         const float instantBpm = 60000.0f / static_cast<float>(periodMs);
         bpm_ = bpm_ <= 0.0f ? instantBpm : bpm_ * 0.70f + instantBpm * 0.30f;
       }
