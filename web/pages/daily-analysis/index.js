@@ -96,6 +96,7 @@ Page({
       const fallbackDay = holdBleRuntime.buildFallbackDailyAnalysis();
       const activeDay = dailyAnalyses[activeIndex] || fallbackDay;
       this.activeDayPayload = activeDay || null;
+      this.requestDailyWaves(activeDay);
       this.setData({
         dailyAnalyses: this.buildDayTabItems(dailyAnalyses),
         activeIndex,
@@ -109,10 +110,35 @@ Page({
     }, this.renderIntervalMs);
   },
 
+  requestDailyWaves(day) {
+    if (!day || typeof holdBleRuntime.ensureDailyAnalysisWaves !== 'function') {
+      return;
+    }
+
+    const dayKey = `${day.dayKey || day.day || ''}`;
+    if (!dayKey || this.waveRequestedDayKey === dayKey) {
+      return;
+    }
+
+    const hasWaves = (Array.isArray(day.respWavePoints) && day.respWavePoints.length > 0)
+      || (Array.isArray(day.chestPpgWavePoints) && day.chestPpgWavePoints.length > 0);
+    if (hasWaves) {
+      return;
+    }
+
+    this.waveRequestedDayKey = dayKey;
+    holdBleRuntime.ensureDailyAnalysisWaves(dayKey).then(() => {
+      if (this.waveRequestedDayKey === dayKey) {
+        this.waveRequestedDayKey = '';
+      }
+    });
+  },
+
   switchDay(event) {
     const index = Number(event.currentTarget.dataset.index || 0);
     const activeDay = (this.currentDailyAnalyses && this.currentDailyAnalyses[index]) || holdBleRuntime.buildFallbackDailyAnalysis();
     this.activeDayPayload = activeDay || null;
+    this.requestDailyWaves(activeDay);
     this.setData({
       activeIndex: index,
       activeDay: this.buildActiveDayView(activeDay),

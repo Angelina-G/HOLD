@@ -45,6 +45,7 @@ Page({
     logExpanded: false,
     envInfo: {},
     storageUsageText: '',
+    accountText: '未登录',
     archiveRows: [],
     chartWidth: 320,
     chartHeight: 180
@@ -59,7 +60,7 @@ Page({
       chartHeight: 180,
       envInfo: readEnvironmentInfo()
     });
-    this.refreshStorageUsage();
+    this.refreshCloudStatus();
 
     this.unsubscribeRuntime = holdBleRuntime.subscribe((state) => {
       this.pendingRuntimeState = state;
@@ -125,6 +126,8 @@ Page({
       phaseRemainingMs: state.phaseRemainingMs || 0,
       respWaveSummary: state.respWaveSummary,
       heartWaveSummary: state.heartWaveSummary,
+      storageUsageText: this.buildCloudStatusText(state),
+      accountText: this.buildAccountText(state),
       debugLogTotal: logs.length,
       debugLogs: this.data.logExpanded ? logs.slice() : logs.slice(0, 8),
       archiveRows: this.buildArchiveRows(state)
@@ -230,15 +233,39 @@ Page({
     ctx.draw();
   },
 
-  refreshStorageUsage() {
-    try {
-      const info = wx.getStorageInfoSync();
-      this.setData({
-        storageUsageText: `${info.currentSize || 0} KB / ${info.limitSize || 0} KB · ${(info.keys || []).length} 个 key`
-      });
-    } catch (error) {
-      this.setData({ storageUsageText: '读取失败' });
+  buildCloudStatusText(state) {
+    const statusMap = {
+      idle: '等待同步',
+      loading: '正在从云端恢复…',
+      ready: '云端已连接',
+      error: '云端异常',
+      unavailable: '不支持云开发'
+    };
+    const status = (state && state.cloudStatus) || 'idle';
+    const activeCount = ((state && state.activeMeasurements) || []).length;
+    const dailyCount = ((state && state.dailyAnalyses) || []).length;
+    const errorText = status === 'error' && state && state.cloudError ? ` · ${state.cloudError}` : '';
+    const scopeText = state && state.sharedData ? '设备共享' : '账号';
+    return `${statusMap[status] || status} · ${scopeText} · 主动 ${activeCount} 条 / 日级 ${dailyCount} 天${errorText}`;
+  },
+
+  buildAccountText(state) {
+    const status = (state && state.accountStatus) || 'anonymous';
+    if (status !== 'ready') {
+      return status === 'signing' ? '登录中…' : (status === 'error' ? '登录失败' : '未登录');
     }
+
+    const user = (state && state.accountUser) || {};
+    const tail = user.openidTail ? ` · ${user.openidTail}` : '';
+    return `已登录${user.nickname ? ` · ${user.nickname}` : ''}${tail}`;
+  },
+
+  refreshCloudStatus() {
+    const state = holdBleRuntime.getState() || {};
+    this.setData({
+      storageUsageText: this.buildCloudStatusText(state),
+      accountText: this.buildAccountText(state)
+    });
   },
 
   buildArchiveRows(state) {
@@ -283,22 +310,17 @@ Page({
 
   clearAllCachedData() {
     wx.showModal({
-      title: '删除全部数据缓存',
-      content: '将永久删除本机归档的呼吸记录、主动检测与整体分析，且无法恢复。确定继续？',
+      title: '删除全部云端数据',
+      content: '将永久删除云端归档的呼吸记录、主动检测与整体分析，且无法恢复。确定继续？',
       confirmText: '删除',
       confirmColor: '#A4442C',
       success: (result) => {
         if (!result.confirm) {
           return;
         }
-        try {
-          wx.clearStorageSync();
-        } catch (error) {
-          console.error('clear storage failed', error);
-        }
         holdBleRuntime.clearCachedData();
-        this.refreshStorageUsage();
-        wx.showToast({ title: '已清空缓存', icon: 'success', duration: 1800 });
+        this.refreshCloudStatus();
+        wx.showToast({ title: '已清空云端数据', icon: 'success', duration: 1800 });
       }
     });
   },

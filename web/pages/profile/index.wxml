@@ -1,0 +1,95 @@
+<view class="profile-page app-page app-page--tabbed">
+  <view class="page-topbar">
+    <view class="app-title">我的</view>
+    <view class="app-muted">账号与数据落在云端，换设备登录即可恢复。</view>
+  </view>
+
+  <!-- 未登录：微信官方登录卡片形态 -->
+  <view class="app-card login-card" wx:if="{{!logged}}">
+    <view class="login-head">
+      <image class="login-avatar" src="/images/login-avatar.png" mode="aspectFit"></image>
+      <view class="login-title">登录后同步你的监测数据</view>
+      <view class="app-body">使用微信一键登录，呼吸与心率记录会绑定到你的微信账号，与设备解绑后也能找回。</view>
+    </view>
+
+    <button class="app-button app-button--primary login-btn" bindtap="startLogin" loading="{{accountStatus === 'signing'}}">
+      {{accountStatus === 'signing' ? '登录中' : '微信一键登录'}}
+    </button>
+
+    <view class="app-muted login-hint">仅获取你的微信身份标识用于数据归属，不会读取其他信息。</view>
+    <view class="login-error" wx:if="{{accountError}}">{{accountError}}</view>
+  </view>
+
+  <!-- 已登录 -->
+  <block wx:else>
+    <view class="app-card account-card">
+      <view class="account-row">
+        <button class="avatar-btn" open-type="chooseAvatar" bindchooseavatar="onChooseAvatar">
+          <image class="account-avatar" wx:if="{{avatarUrl}}" src="{{avatarUrl}}" mode="aspectFill"></image>
+          <view class="account-avatar account-avatar--letter" wx:else>{{avatarLetter}}</view>
+        </button>
+
+        <view class="account-main">
+          <view class="account-name">{{nickname}}</view>
+          <view class="app-muted account-sub">点击头像可更换 · ID {{userIdText}}</view>
+        </view>
+
+        <view class="account-edit" wx:if="{{!editing}}" bindtap="startEditNickname">改名</view>
+      </view>
+
+      <view class="nickname-editor" wx:if="{{editing}}">
+        <input
+          class="nickname-input"
+          type="nickname"
+          maxlength="{{nicknameMax}}"
+          placeholder="请输入昵称"
+          value="{{draftNickname}}"
+          bindinput="onNicknameInput"
+          confirm-type="done"
+          bindconfirm="saveNickname"
+        />
+        <view class="nickname-actions">
+          <button class="app-button app-button--ghost nickname-btn" bindtap="cancelEditNickname">取消</button>
+          <button class="app-button app-button--primary nickname-btn" bindtap="saveNickname" loading="{{saving}}">保存</button>
+        </view>
+      </view>
+    </view>
+
+    <view class="app-card">
+      <view class="app-card-head">
+        <view class="app-section-title">云端数据</view>
+      </view>
+
+      <view class="stat-row">
+        <view class="stat-item" wx:for="{{stats}}" wx:key="key">
+          <view class="stat-value">{{item.value}}</view>
+          <view class="app-metric-label">{{item.label}}</view>
+        </view>
+        <view class="stat-item" wx:if="{{!stats.length}}">
+          <view class="stat-value">--</view>
+          <view class="app-metric-label">暂无归档</view>
+        </view>
+      </view>
+
+      <view class="section-divider"></view>
+      <view class="status-row"><text class="label">同步状态</text><text class="value">{{cloudReadyText}}</text></view>
+      <view class="status-row"><text class="label">数据范围</text><text class="value">{{scopeText}}</text></view>
+      <view class="status-row"><text class="label">账号 ID 尾号</text><text class="value">{{openidTail}}</text></view>
+      <view class="status-row"><text class="label">注册时间</text><text class="value">{{createdAtText}}</text></view>
+      <view class="status-row"><text class="label">最近登录</text><text class="value">{{lastLoginText}}</text></view>
+      <view class="status-row"><text class="label">登录次数</text><text class="value">{{loginCount}}</text></view>
+    </view>
+
+    <view class="app-card">
+      <view class="app-card-head">
+        <view class="app-section-title">其他</view>
+      </view>
+      <view class="link-row" bindtap="openDebugPage">
+        <text>设备调试</text>
+        <text class="link-arrow">›</text>
+      </view>
+      <view class="section-divider"></view>
+      <button class="app-button app-button--danger logout-btn" bindtap="logout">退出登录</button>
+    </view>
+  </block>
+</view>

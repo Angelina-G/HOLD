@@ -293,3 +293,136 @@
   color: #1b2419;
   margin-bottom: 6rpx;
 }
+
+/* ---------- 状态识别 ---------- */
+
+.emotion-state {
+  padding: 12rpx 0;
+}
+
+.emotion-retry {
+  display: inline-block;
+  margin-top: 18rpx;
+  padding: 8rpx 26rpx;
+  font-size: 25rpx;
+  color: #2f5d3a;
+  border: 1rpx solid rgba(47, 93, 58, 0.3);
+  border-radius: 999rpx;
+}
+
+.emotion-retry:active {
+  background: rgba(47, 93, 58, 0.08);
+}
+
+.emotion-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+}
+
+.emotion-label {
+  font-size: 52rpx;
+  font-weight: 500;
+  line-height: 1.2;
+  letter-spacing: 2rpx;
+}
+
+.emotion-label--0 {
+  color: #3e7c59;
+}
+
+.emotion-label--1 {
+  color: #b0583a;
+}
+
+.emotion-label--2 {
+  color: #c98a2e;
+}
+
+.emotion-confidence {
+  font-size: 26rpx;
+  color: #1b2419;
+}
+
+.emotion-bars {
+  margin-top: 24rpx;
+  padding-top: 22rpx;
+  border-top: 1rpx solid rgba(27, 36, 25, 0.06);
+}
+
+.emotion-bar {
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+}
+
+.emotion-bar + .emotion-bar {
+  margin-top: 18rpx;
+}
+
+.emotion-bar__name {
+  flex: none;
+  width: 68rpx;
+  font-size: 25rpx;
+  color: #7d8578;
+}
+
+.emotion-bar__track {
+  flex: 1;
+  height: 8rpx;
+  border-radius: 999rpx;
+  background: rgba(27, 36, 25, 0.07);
+  overflow: hidden;
+}
+
+.emotion-bar__fill {
+  height: 100%;
+  border-radius: 999rpx;
+  transition: width 0.4s ease;
+}
+
+.emotion-bar__fill--0 {
+  background: #3e7c59;
+}
+
+.emotion-bar__fill--1 {
+  background: #b0583a;
+}
+
+.emotion-bar__fill--2 {
+  background: #c98a2e;
+}
+
+.emotion-bar__value {
+  flex: none;
+  width: 76rpx;
+  text-align: right;
+  font-size: 25rpx;
+  color: #1b2419;
+}
+
+.emotion-segments {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10rpx 20rpx;
+  margin-top: 24rpx;
+  padding-top: 20rpx;
+  border-top: 1rpx solid rgba(27, 36, 25, 0.06);
+}
+
+.emotion-segment {
+  display: flex;
+  align-items: baseline;
+  gap: 8rpx;
+}
+
+.emotion-segment__label {
+  font-size: 25rpx;
+  color: #1b2419;
+}
+
+.emotion-meta {
+  display: block;
+  margin-top: 18rpx;
+}

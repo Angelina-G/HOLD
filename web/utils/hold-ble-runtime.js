@@ -1,4 +1,13 @@
 const bleDebugProtocol = require('./ble-debug-protocol');
+const holdCloudStore = require('./hold-cloud-store');
+
+let holdAccount = null;
+try {
+  // 延迟 require，避免 account / runtime 互相引用时拿到未完成的模块
+  holdAccount = require('./hold-account');
+} catch (error) {
+  holdAccount = null;
+}
 
 const MAX_WAVE_POINTS = 240;
 const MAX_DEBUG_LOGS = 40;
@@ -6,13 +15,33 @@ const MAX_ACTIVE_MEASUREMENTS = 30;
 const MAX_DAILY_ANALYSES = 21;
 const MAX_RESP_REPORT_POINTS = 240;
 const MAX_PPG_REPORT_POINTS = 6000;
-const STORAGE_KEY = 'hold_ble_runtime_state_v2';
 const MAX_ACTIVE_PERSIST_DAYS = 7;
 const MAX_DAILY_PERSIST_DAYS = 14;
 const AUTO_RECONNECT_DELAY_MS = 1200;
 
+/** 归档时单独存放的大段波形字段，列表拉取不带，按需加载 */
+const MEASUREMENT_WAVE_KEYS = [
+  'fullPpgWavePoints',
+  'fullPpgBeatMarkerPoints',
+  'fullPpgTsMs',
+  'fullPpgDetrendedIr',
+  'fullPpgRawIr',
+  'fullPpgAvgIr'
+];
+const DAILY_WAVE_KEYS = [
+  'respWavePoints',
+  'respBeatMarkerPoints',
+  'chestPpgWavePoints',
+  'chestPpgBeatMarkerPoints'
+];
+/** 实时滚动缓存落云时做抽稀，避免每次同步都传上万点 */
+const STATE_CHEST_PPG_PERSIST_POINTS = 1500;
+
 const runtime = {
   initialized: false,
+  hydrated: false,
+  hydratePromise: null,
+  waveLoading: {},
   listeners: [],
   connecting: false,
   manualDisconnectRequested: false,
@@ -64,8 +93,81 @@ function buildInitialState() {
     latestPassiveWindow: null,
     latestActiveWindow: null,
     overallSummary: buildEmptyOverallSummary(),
-    insightStatus: 'idle'
+    insightStatus: 'idle',
+    cloudStatus: 'idle',
+    cloudError: '',
+    scope: 'mine',
+    sharedData: false,
+    accountStatus: 'anonymous',
+    accountUser: null
   };
+}
+
+/**
+ * 数据范围：登录后按账号读；未登录时按设备共享读，
+ * 这样新用户没登录也能看到这台设备已经归档的历史。
+ */
+function resolveScope() {
+  return holdAccount && holdAccount.isReady() ? 'mine' : 'shared';
+}
+
+function downsampleSeries(series, cap, preservePeaks) {
+  const source = Array.isArray(series) ? series : [];
+  if (source.length <= cap || cap <= 0) {
+    return source.slice();
+  }
+
+  const result = [];
+  for (let index = 0; index < cap; index += 1) {
+    const start = Math.floor((index * source.length) / cap);
+    const end = Math.floor(((index + 1) * source.length) / cap);
+    const bucket = source.slice(start, Math.max(start + 1, end));
+    if (!bucket.length) {
+      continue;
+    }
+
+    if (preservePeaks) {
+      // 跳点序列取绝对值最大的那个，保证 0 段仍然是 0，不会把整条线糊成有跳点
+      let picked = bucket[0];
+      bucket.forEach((value) => {
+        if (Math.abs(value) > Math.abs(picked)) {
+          picked = value;
+        }
+      });
+      result.push(picked);
+    } else {
+      const sum = bucket.reduce((acc, value) => acc + Number(value || 0), 0);
+      result.push(sum / bucket.length);
+    }
+  }
+  return result;
+}
+
+function splitWaveFields(item, waveKeys) {
+  const record = {};
+  const wave = {};
+  Object.keys(item || {}).forEach((key) => {
+    if (waveKeys.indexOf(key) >= 0) {
+      wave[key] = Array.isArray(item[key]) ? item[key] : [];
+    } else if (key !== 'raw') {
+      record[key] = item[key];
+    }
+  });
+  return { record, wave };
+}
+
+function mergeWaveFields(record, wave) {
+  const merged = Object.assign({}, record || {});
+  Object.keys(wave || {}).forEach((key) => {
+    if (Array.isArray(wave[key])) {
+      merged[key] = wave[key];
+    }
+  });
+  return merged;
+}
+
+function hasWaveData(item, waveKeys) {
+  return waveKeys.some((key) => Array.isArray(item && item[key]) && item[key].length > 0);
 }
 
 function stringToArrayBuffer(text) {
@@ -108,49 +210,145 @@ function emitState() {
   });
 }
 
-function persistState() {
-  const persisted = {
-    activeMeasurements: runtime.state.activeMeasurements,
-    dailyAnalyses: runtime.state.dailyAnalyses,
+function buildCloudStatePayload() {
+  return {
     latestPassiveWindow: runtime.state.latestPassiveWindow,
     latestActiveWindow: runtime.state.latestActiveWindow,
     overallSummary: runtime.state.overallSummary,
     respWavePoints: runtime.state.respWavePoints,
     respBeatMarkerPoints: runtime.state.respBeatMarkerPoints,
-    chestPpgWavePoints: runtime.state.chestPpgWavePoints,
-    chestPpgBeatMarkerPoints: runtime.state.chestPpgBeatMarkerPoints
+    chestPpgWavePoints: downsampleSeries(runtime.state.chestPpgWavePoints, STATE_CHEST_PPG_PERSIST_POINTS),
+    chestPpgBeatMarkerPoints: downsampleSeries(runtime.state.chestPpgBeatMarkerPoints, STATE_CHEST_PPG_PERSIST_POINTS, true)
   };
-
-  try {
-    wx.setStorageSync(STORAGE_KEY, persisted);
-  } catch (error) {
-    console.error('persist state failed', error);
-  }
 }
 
-function hydrateStateFromStorage() {
-  try {
-    const persisted = wx.getStorageSync(STORAGE_KEY);
-    if (!persisted || typeof persisted !== 'object') {
-      return;
-    }
-
-    runtime.state.activeMeasurements = Array.isArray(persisted.activeMeasurements)
-      ? persisted.activeMeasurements.slice(0, MAX_ACTIVE_MEASUREMENTS)
-      : [];
-    runtime.state.dailyAnalyses = Array.isArray(persisted.dailyAnalyses)
-      ? persisted.dailyAnalyses.slice(0, MAX_DAILY_ANALYSES)
-      : [];
-    runtime.state.latestPassiveWindow = persisted.latestPassiveWindow || null;
-    runtime.state.latestActiveWindow = persisted.latestActiveWindow || null;
-    runtime.state.overallSummary = persisted.overallSummary || buildEmptyOverallSummary();
-    runtime.state.respWavePoints = Array.isArray(persisted.respWavePoints) ? persisted.respWavePoints : [];
-    runtime.state.respBeatMarkerPoints = Array.isArray(persisted.respBeatMarkerPoints) ? persisted.respBeatMarkerPoints : [];
-    runtime.state.chestPpgWavePoints = Array.isArray(persisted.chestPpgWavePoints) ? persisted.chestPpgWavePoints : [];
-    runtime.state.chestPpgBeatMarkerPoints = Array.isArray(persisted.chestPpgBeatMarkerPoints) ? persisted.chestPpgBeatMarkerPoints : [];
-  } catch (error) {
-    console.error('hydrate state failed', error);
+function persistState() {
+  if (!runtime.hydrated) {
+    // 云端数据还没拉回来，此时写入会把已有归档覆盖成空
+    return;
   }
+
+  holdCloudStore.saveState(buildCloudStatePayload());
+}
+
+function persistActiveMeasurement(measurement, options = {}) {
+  if (!measurement || !measurement.id || !runtime.hydrated) {
+    return;
+  }
+
+  const parts = splitWaveFields(measurement, MEASUREMENT_WAVE_KEYS);
+  // 只改摘要字段（例如生成报告）时，内存里的波形可能还没按需加载，此时不能把云端波形覆盖成空
+  const keepWave = Boolean(options.keepWave) && !hasWaveData(measurement, MEASUREMENT_WAVE_KEYS);
+  holdCloudStore.saveMeasurement(measurement.id, parts.record, parts.wave, keepWave);
+}
+
+function persistDailyAnalysis(day, options = {}) {
+  if (!day || !runtime.hydrated) {
+    return;
+  }
+
+  const dayKey = `${day.dayKey || day.day || ''}`;
+  if (!dayKey) {
+    return;
+  }
+
+  const parts = splitWaveFields(day, DAILY_WAVE_KEYS);
+  const keepWave = Boolean(options.keepWave) && !hasWaveData(day, DAILY_WAVE_KEYS);
+  holdCloudStore.saveDaily(dayKey, parts.record, parts.wave, keepWave);
+}
+
+function applyCloudSnapshot(snapshot) {
+  const state = snapshot && snapshot.state ? snapshot.state : null;
+  const measurements = snapshot && Array.isArray(snapshot.measurements) ? snapshot.measurements : [];
+  const dailyAnalyses = snapshot && Array.isArray(snapshot.dailyAnalyses) ? snapshot.dailyAnalyses : [];
+
+  runtime.state.activeMeasurements = measurements
+    .map((item) => mergeWaveFields(item.record, {}))
+    .filter((item) => item && item.id)
+    .slice(0, MAX_ACTIVE_MEASUREMENTS);
+
+  runtime.state.dailyAnalyses = dailyAnalyses
+    .map((item) => mergeWaveFields(item.record, {}))
+    .filter((item) => item && (item.dayKey || item.day))
+    .slice(0, MAX_DAILY_ANALYSES);
+
+  runtime.state.latestPassiveWindow = state && state.latestPassiveWindow ? state.latestPassiveWindow : null;
+  runtime.state.latestActiveWindow = state && state.latestActiveWindow ? state.latestActiveWindow : null;
+  runtime.state.overallSummary = state && state.overallSummary
+    ? state.overallSummary
+    : buildEmptyOverallSummary();
+  runtime.state.respWavePoints = state && Array.isArray(state.respWavePoints) ? state.respWavePoints : [];
+  runtime.state.respBeatMarkerPoints = state && Array.isArray(state.respBeatMarkerPoints) ? state.respBeatMarkerPoints : [];
+  runtime.state.chestPpgWavePoints = state && Array.isArray(state.chestPpgWavePoints) ? state.chestPpgWavePoints : [];
+  runtime.state.chestPpgBeatMarkerPoints = state && Array.isArray(state.chestPpgBeatMarkerPoints) ? state.chestPpgBeatMarkerPoints : [];
+}
+
+async function hydrateFromCloud(options = {}) {
+  runtime.state.cloudStatus = 'loading';
+  if (!options.silent) {
+    runtime.state.cloudError = '';
+  }
+  emitState();
+
+  if (!holdCloudStore.isCloudReady()) {
+    runtime.state.cloudStatus = 'unavailable';
+    runtime.state.cloudError = '当前环境不支持云开发';
+    runtime.hydrated = true;
+    emitState();
+    return;
+  }
+
+  const scope = resolveScope();
+  const accountReady = !!(holdAccount && holdAccount.isReady());
+
+  try {
+    const snapshot = await holdCloudStore.pull({ scope });
+    applyCloudSnapshot(snapshot);
+    runtime.state.scope = (snapshot && snapshot.scope) || scope;
+    runtime.state.sharedData = !!(snapshot && snapshot.shared);
+    runtime.state.cloudStatus = 'ready';
+    runtime.state.cloudError = '';
+    pushDebugLog(accountReady ? '已从云端恢复账号归档数据' : '已从未登录状态恢复本机设备数据');
+  } catch (error) {
+    runtime.state.cloudStatus = 'error';
+    runtime.state.cloudError = error && error.message ? error.message : 'unknown';
+    console.error('hydrate from cloud failed', error);
+    pushDebugLog(`云端恢复失败: ${runtime.state.cloudError}`);
+  }
+
+  runtime.hydrated = true;
+  emitState();
+}
+
+/**
+ * 登录状态变化后重新拉一次：
+ * 登录 -> 切成账号数据；退出登录 -> 回落为设备共享数据。
+ */
+function handleAccountChange(state) {
+  runtime.state.accountStatus = (state && state.status) || 'anonymous';
+  runtime.state.accountUser = (state && state.user) || null;
+
+  if (!runtime.hydrated) {
+    emitState();
+    return;
+  }
+
+  const nextScope = resolveScope();
+  if (nextScope === runtime.state.scope) {
+    emitState();
+    return;
+  }
+
+  // 换身份前先把上一个身份的待写队列落库，避免写到新身份下
+  holdCloudStore.flush();
+  runtime.hydratePromise = hydrateFromCloud({ silent: true });
+}
+
+function waitForHydration() {
+  if (runtime.hydratePromise) {
+    return runtime.hydratePromise;
+  }
+  return Promise.resolve(runtime.hydrated);
 }
 
 function appendWavePoint(key, value) {
@@ -190,6 +388,51 @@ function trimArrayToCap(key, cap) {
     points.shift();
   }
   runtime.state[key] = points;
+}
+
+/**
+ * 按「本批末点设备时间戳 + 采样间隔」还原每个采样点的 device_uptime_ms，
+ * 与 pendingMeasurement.wavePoints 逐点对齐，并一起按上限裁剪。
+ */
+function appendTsPoints(pendingMeasurement, count, intervalMs, tsEndMs) {
+  if (!pendingMeasurement || !count) {
+    return;
+  }
+
+  const points = pendingMeasurement.tsPoints.slice();
+  if (intervalMs > 0) {
+    const lastTs = points.length ? Number(points[points.length - 1] || 0) : 0;
+    const base = tsEndMs > 0
+      ? tsEndMs - (count - 1) * intervalMs
+      : (lastTs > 0 ? lastTs + intervalMs : intervalMs);
+    for (let index = 0; index < count; index += 1) {
+      points.push(base + index * intervalMs);
+    }
+  } else {
+    // 没有采样间隔就无法还原时间轴，留空由预测侧回退处理
+    for (let index = 0; index < count; index += 1) {
+      points.push(0);
+    }
+  }
+
+  pendingMeasurement.tsPoints = points.length > MAX_PPG_REPORT_POINTS
+    ? points.slice(-MAX_PPG_REPORT_POINTS)
+    : points;
+}
+
+/**
+ * 把同一批里的另一路数组（去趋势 IR / 原始 IR / IR 均值）按同样上限裁齐，
+ * 保证与 wavePoints、tsPoints 三点对齐。
+ */
+function appendAlignedPoints(pendingMeasurement, key, values) {
+  if (!pendingMeasurement || !Array.isArray(values) || !values.length) {
+    return;
+  }
+
+  const points = (pendingMeasurement[key] || []).concat(values.map((value) => Number(value || 0)));
+  pendingMeasurement[key] = points.length > MAX_PPG_REPORT_POINTS
+    ? points.slice(-MAX_PPG_REPORT_POINTS)
+    : points;
 }
 
 function sampleSeriesForPrompt(series, maxPoints, preservePeaks) {
@@ -389,7 +632,11 @@ function stripFullActiveWave(item) {
   return {
     ...item,
     fullPpgWavePoints: [],
-    fullPpgBeatMarkerPoints: []
+    fullPpgBeatMarkerPoints: [],
+    fullPpgTsMs: [],
+    fullPpgDetrendedIr: [],
+    fullPpgRawIr: [],
+    fullPpgAvgIr: []
   };
 }
 
@@ -504,6 +751,14 @@ function getOrCreatePendingActiveRealtimeMeasurement(measurementId) {
       measurementId: key,
       wavePoints: [],
       beatMarkerPoints: [],
+      // 与 wavePoints 逐点对齐的设备时间戳（device_uptime_ms），供情感检测接口使用
+      tsPoints: [],
+      // 去趋势 IR（detrended_ir，情感检测接口真正要的信号）。
+      // i6 是固件 filtered_ir（detrended 之后又做了平滑），与 detrended_ir 相关度只有 0.68，
+      // 不能直接替代，所以这里单独接一路原始/去趋势数据。
+      detrendedPoints: [],
+      rawIrPoints: [],
+      avgIrPoints: [],
       beatCount: 0,
       heartRateBpm: 0,
       lastBeatIntervalMs: 0,
@@ -523,6 +778,13 @@ function consumePendingActiveRealtimeMeasurement(measurementId) {
   return snapshot;
 }
 
+/** 只有与波形等长的辅助数组才可信，长度对不上就丢弃，交给预测侧回退 */
+function pickAlignedSeries(provided, expectedLength) {
+  return Array.isArray(provided) && expectedLength > 0 && provided.length === expectedLength
+    ? provided.slice()
+    : [];
+}
+
 function buildActiveMeasurementRecord(payload, existingItem, options = {}) {
   const id = resolveActiveMeasurementId(payload, `${Date.now()}`);
   const avgHeartRate = Number(payload.heart_rate_bpm || 0);
@@ -532,6 +794,10 @@ function buildActiveMeasurementRecord(payload, existingItem, options = {}) {
   const fragmentTotal = Number(options.fragmentTotal || 0);
   const providedFullWavePoints = Array.isArray(options.fullWavePoints) ? options.fullWavePoints : null;
   const providedFullBeatMarkerPoints = Array.isArray(options.fullBeatMarkerPoints) ? options.fullBeatMarkerPoints : null;
+  const providedFullTsMsPoints = Array.isArray(options.fullTsMsPoints) ? options.fullTsMsPoints : null;
+  const providedFullDetrendedIr = Array.isArray(options.fullDetrendedIrPoints) ? options.fullDetrendedIrPoints : null;
+  const providedFullRawIr = Array.isArray(options.fullRawIrPoints) ? options.fullRawIrPoints : null;
+  const providedFullAvgIr = Array.isArray(options.fullAvgIrPoints) ? options.fullAvgIrPoints : null;
   const realtimeHeartRateBpm = Number(options.realtimeHeartRateBpm || 0);
   const realtimeBeatCount = Number(options.realtimeBeatCount || 0);
   const realtimeSampleIntervalMs = Number(options.realtimeSampleIntervalMs || 0);
@@ -614,6 +880,13 @@ function buildActiveMeasurementRecord(payload, existingItem, options = {}) {
     fullBeatCount: effectiveBeatCount || rrIntervalsMs.length || beatTimelineMs.length || preferredBeatMarkerPoints.filter((value) => Number(value || 0) !== 0).length,
     fullPpgWavePoints: fullWavePoints,
     fullPpgBeatMarkerPoints: preferredBeatMarkerPoints,
+    /** 与 fullPpgWavePoints 逐点对齐的设备时间戳，情感检测接口的 t_ms */
+    fullPpgTsMs: pickAlignedSeries(providedFullTsMsPoints, fullWavePoints.length),
+    /** 去趋势 IR，情感检测接口的 sig（i6 只是 filtered_ir，不能替代） */
+    fullPpgDetrendedIr: pickAlignedSeries(providedFullDetrendedIr, fullWavePoints.length),
+    fullPpgRawIr: pickAlignedSeries(providedFullRawIr, fullWavePoints.length),
+    fullPpgAvgIr: pickAlignedSeries(providedFullAvgIr, fullWavePoints.length),
+    sampleIntervalMs: realtimeSampleIntervalMs,
     ppgWavePoints: displaySeries.wavePoints,
     ppgBeatMarkerPoints: displaySeries.beatMarkerPoints,
     beatTimelineMs,
@@ -661,7 +934,7 @@ function trimOldRecords() {
   const dailyCutoff = now - MAX_DAILY_PERSIST_DAYS * 24 * 60 * 60 * 1000;
 
   runtime.state.activeMeasurements = (runtime.state.activeMeasurements || []).filter((item) => {
-    const ts = Number(item.sampleEndTsMs || item.raw?.sample_end_ts_ms || 0);
+    const ts = Number(item.sampleEndTsMs || item.sampleStartTsMs || 0);
     return !ts || ts >= activeCutoff;
   }).slice(0, MAX_ACTIVE_MEASUREMENTS);
 
@@ -933,7 +1206,8 @@ function upsertDailyAnalysis(payload) {
 
   runtime.state.dailyAnalyses = analyses.slice(0, MAX_DAILY_ANALYSES);
   trimOldRecords();
-  persistState();
+  persistDailyAnalysis(nextDay);
+  emitState();
   refreshOverallInsight();
 }
 
@@ -943,11 +1217,16 @@ function appendActiveMeasurement(payload, options = {}) {
   const existingItem = measurements.find((item) => item.id === id) || null;
   const nextItem = buildActiveMeasurementRecord(payload, existingItem, options);
 
+  const previousNewest = measurements[0] || null;
   const filtered = measurements.filter((item) => item.id !== id).map(stripFullActiveWave);
   filtered.unshift(nextItem);
   runtime.state.activeMeasurements = filtered.slice(0, MAX_ACTIVE_MEASUREMENTS);
   trimOldRecords();
-  persistState();
+  persistActiveMeasurement(nextItem);
+  if (previousNewest && previousNewest.id !== id && hasWaveData(previousNewest, MEASUREMENT_WAVE_KEYS)) {
+    // 上一条记录的大波形在内存里已被裁掉，云端也要同步裁掉
+    persistActiveMeasurement(stripFullActiveWave(previousNewest));
+  }
   emitState();
   refreshOverallInsight();
 }
@@ -1016,6 +1295,20 @@ function applyActiveRealtimeBatch(payload) {
   pendingMeasurement.lastBeatIntervalMs = Number(payload.i12 || pendingMeasurement.lastBeatIntervalMs || 0);
   pendingMeasurement.sampleIntervalMs = Number(payload.dt_ms || pendingMeasurement.sampleIntervalMs || 0);
   pendingMeasurement.tsMsEnd = Number(payload.ts_ms_end || pendingMeasurement.tsMsEnd || 0);
+  appendTsPoints(
+    pendingMeasurement,
+    (payload.i6 || []).length,
+    Number(payload.dt_ms || pendingMeasurement.sampleIntervalMs || 0),
+    Number(payload.ts_ms_end || 0)
+  );
+  // 去趋势 IR：优先固件直接给的 detrended_ir，否则退回 raw_ir / avg_ir 由预测侧现算
+  appendAlignedPoints(
+    pendingMeasurement,
+    'detrendedPoints',
+    payload.i5 || payload.detrended || payload.detrended_ir || null
+  );
+  appendAlignedPoints(pendingMeasurement, 'rawIrPoints', payload.raw_ir || payload.rawir || payload.raw || null);
+  appendAlignedPoints(pendingMeasurement, 'avgIrPoints', payload.avg_ir || payload.avgir || payload.avg || null);
   runtime.state.currentHeartBpm = Number(payload.bpm || 0);
   runtime.state.currentActiveHeartBpm = Number(payload.bpm || 0);
   runtime.state.currentSignalQuality = Number(payload.qs || 0);
@@ -1156,6 +1449,10 @@ function applyActiveWindow(payload) {
     fragmentTotal,
     fullWavePoints: pendingRealtimeMeasurement.wavePoints,
     fullBeatMarkerPoints: pendingRealtimeMeasurement.beatMarkerPoints,
+    fullTsMsPoints: pendingRealtimeMeasurement.tsPoints,
+    fullDetrendedIrPoints: pendingRealtimeMeasurement.detrendedPoints,
+    fullRawIrPoints: pendingRealtimeMeasurement.rawIrPoints,
+    fullAvgIrPoints: pendingRealtimeMeasurement.avgIrPoints,
     realtimeComplete,
     realtimeDurationMs,
     realtimePointTarget,
@@ -1180,6 +1477,10 @@ function applyActiveWindow(payload) {
       fragmentTotal,
       fullWavePoints: completedRealtimeMeasurement.wavePoints,
       fullBeatMarkerPoints: completedRealtimeMeasurement.beatMarkerPoints,
+      fullTsMsPoints: completedRealtimeMeasurement.tsPoints,
+      fullDetrendedIrPoints: completedRealtimeMeasurement.detrendedPoints,
+      fullRawIrPoints: completedRealtimeMeasurement.rawIrPoints,
+      fullAvgIrPoints: completedRealtimeMeasurement.avgIrPoints,
       realtimeComplete: true,
       realtimeDurationMs: Number(completedRealtimeMeasurement.sampleIntervalMs || 0) * Number(completedRealtimeMeasurement.wavePoints.length || 0),
       realtimePointTarget: Number(completedRealtimeMeasurement.sampleIntervalMs || 0) > 0
@@ -1440,7 +1741,14 @@ function init() {
   }
 
   runtime.initialized = true;
-  hydrateStateFromStorage();
+
+  if (holdAccount && typeof holdAccount.subscribe === 'function') {
+    runtime.unsubscribeAccount = holdAccount.subscribe((state) => {
+      handleAccountChange(state);
+    });
+  }
+
+  runtime.hydratePromise = hydrateFromCloud();
   wx.onBLECharacteristicValueChange((result) => {
     applyDebugPacket(bleDebugProtocol.parseBleNotifyBuffer(result.value));
   });
@@ -1601,7 +1909,7 @@ function clearCachedData() {
   runtime.state.latestPassiveWindow = null;
   runtime.state.latestActiveWindow = null;
   runtime.state.overallSummary = buildEmptyOverallSummary();
-  persistState();
+  holdCloudStore.clearAll();
   emitState();
 }
 
@@ -1721,7 +2029,7 @@ function updateActiveMeasurementReport(id, patch) {
     ...patch
   };
   runtime.state.activeMeasurements = measurements;
-  persistState();
+  persistActiveMeasurement(measurements[index], { keepWave: true });
   emitState();
   return measurements[index];
 }
@@ -1819,15 +2127,105 @@ function requestOverallInsightRefresh() {
   return refreshOverallInsight(true);
 }
 
+async function ensureMeasurementWaves(id) {
+  await waitForHydration();
+  if (!id) {
+    return null;
+  }
+
+  const loadingKey = `measurement:${id}`;
+  const findMeasurement = () => (runtime.state.activeMeasurements || []).find((item) => item.id === id) || null;
+  const existing = findMeasurement();
+  if (!existing || hasWaveData(existing, MEASUREMENT_WAVE_KEYS) || runtime.waveLoading[loadingKey]) {
+    return existing;
+  }
+
+  runtime.waveLoading[loadingKey] = true;
+  try {
+    const detail = await holdCloudStore.loadDetail('measurement', id, { scope: runtime.state.scope });
+    if (detail && detail.record) {
+      const merged = mergeWaveFields(detail.record, detail.wave);
+      const measurements = runtime.state.activeMeasurements.slice();
+      const index = measurements.findIndex((item) => item.id === id);
+      if (index >= 0) {
+        measurements[index] = merged;
+      } else {
+        measurements.unshift(merged);
+      }
+      runtime.state.activeMeasurements = measurements;
+      emitState();
+    }
+  } catch (error) {
+    console.error('ensure measurement waves failed', error);
+  } finally {
+    delete runtime.waveLoading[loadingKey];
+  }
+
+  return findMeasurement();
+}
+
+async function ensureDailyAnalysisWaves(dayKey) {
+  await waitForHydration();
+  if (!dayKey) {
+    return null;
+  }
+
+  const loadingKey = `daily:${dayKey}`;
+  const findDay = () => (runtime.state.dailyAnalyses || []).find((item) => `${item.dayKey || item.day || ''}` === `${dayKey}`) || null;
+  const existing = findDay();
+  if (!existing || hasWaveData(existing, DAILY_WAVE_KEYS) || runtime.waveLoading[loadingKey]) {
+    return existing;
+  }
+
+  runtime.waveLoading[loadingKey] = true;
+  try {
+    const detail = await holdCloudStore.loadDetail('daily', dayKey, { scope: runtime.state.scope });
+    if (detail && detail.record) {
+      const merged = mergeWaveFields(detail.record, detail.wave);
+      const analyses = runtime.state.dailyAnalyses.slice();
+      const index = analyses.findIndex((item) => `${item.dayKey || item.day || ''}` === `${dayKey}`);
+      if (index >= 0) {
+        analyses[index] = merged;
+        runtime.state.dailyAnalyses = analyses;
+        emitState();
+      }
+    }
+  } catch (error) {
+    console.error('ensure daily waves failed', error);
+  } finally {
+    delete runtime.waveLoading[loadingKey];
+  }
+
+  return findDay();
+}
+
+function getCloudStatus() {
+  return {
+    status: runtime.state.cloudStatus,
+    error: runtime.state.cloudError,
+    lastError: holdCloudStore.getLastError()
+  };
+}
+
+function flushCloudWrites() {
+  holdCloudStore.flush();
+}
+
 module.exports = {
   init,
   subscribe,
   getState,
+  getScope: resolveScope,
   buildFallbackDailyAnalysis,
   getOverallSummary,
   ensureActiveMeasurementFromLatestWindow,
   buildCurrentActiveMeasurementFromLatestWindow,
   updateActiveMeasurementReport,
+  ensureMeasurementWaves,
+  ensureDailyAnalysisWaves,
+  getCloudStatus,
+  flushCloudWrites,
+  waitForHydration,
   requestActiveMeasurementInsight,
   requestOverallInsightRefresh,
   startBreathGuide,

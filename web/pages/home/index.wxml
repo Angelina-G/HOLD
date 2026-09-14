@@ -119,4 +119,52 @@
       <view class="app-empty" wx:else>还没有检测记录。</view>
     </block>
   </view>
+
+  <view class="app-card">
+    <view class="app-card-head">
+      <view class="app-section-title">状态识别</view>
+      <text class="app-muted" wx:if="{{emotionUpdatedAt}}">{{emotionUpdatedAt}}</text>
+    </view>
+
+    <view wx:if="{{emotionStatus === 'idle'}}" class="app-empty">完成一次 60 秒检测后自动识别。</view>
+
+    <view wx:elif="{{emotionStatus === 'loading'}}" class="emotion-state">
+      <view class="app-body">正在上传波形并识别…</view>
+    </view>
+
+    <view wx:elif="{{emotionStatus === 'error'}}" class="emotion-state">
+      <view class="app-body">{{emotionError}}</view>
+      <view class="emotion-retry" bindtap="retryEmotionPredict">重新识别</view>
+    </view>
+
+    <block wx:else>
+      <view class="emotion-head">
+        <view class="emotion-label emotion-label--{{emotionLabelId}}">{{emotionLabel}}</view>
+        <view class="emotion-sub">
+          <text class="app-muted">置信度 </text>
+          <text class="emotion-confidence">{{emotionConfidence}}</text>
+        </view>
+      </view>
+
+      <view class="emotion-bars">
+        <view class="emotion-bar" wx:for="{{emotionBars}}" wx:key="name">
+          <text class="emotion-bar__name">{{item.name}}</text>
+          <view class="emotion-bar__track">
+            <view class="emotion-bar__fill emotion-bar__fill--{{index}}" style="width: {{item.width}}%;"></view>
+          </view>
+          <text class="emotion-bar__value">{{item.percent}}</text>
+        </view>
+      </view>
+
+      <view class="emotion-segments" wx:if="{{emotionSegments.length > 1}}">
+        <text class="app-muted">分段结果</text>
+        <view class="emotion-segment" wx:for="{{emotionSegments}}" wx:key="index">
+          <text class="app-muted">第 {{item.index + 1}} 段</text>
+          <text class="emotion-segment__label">{{item.label}}</text>
+        </view>
+      </view>
+
+      <view class="app-muted emotion-meta" wx:if="{{emotionMeta}}">{{emotionMeta}}</view>
+    </block>
+  </view>
 </view>

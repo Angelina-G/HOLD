@@ -30,12 +30,12 @@
   "packOptions": {
     "ignore": [
       {
-        "type": "folder",
-        "value": "hold-progress-wall"
+        "value": "hold-progress-wall",
+        "type": "folder"
       },
       {
-        "type": "folder",
-        "value": "miniapp_ble_link_test"
+        "value": "miniapp_ble_link_test",
+        "type": "folder"
       }
     ],
     "include": []

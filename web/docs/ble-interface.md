@@ -132,7 +132,7 @@
 
 | 字段 | 类型 | 说明 |
 |---|---|---|
-| `i6` | number[] | I6 滤波波形批量点 |
+| `i6` | number[] | I6 滤波波形批量点（= 固件 `filtered_ir`，beat 检测链输入） |
 | `i7` | number[] | I7 beat 标记批量点 |
 | `measurement_id` | number | 测量 ID |
 | `sample_count` | number | 本批点数 |
@@ -145,6 +145,27 @@
 | `cp` | number/bool | 接触状态（非 0 即贴合） |
 
 小程序按 `measurement_id` 累积完整实时波形（上限 6000 点 ≈ 60s × 100Hz），用于在窗口元数据到达前先完成归档。
+
+#### 4.5.1 情感检测所需的去趋势 IR（**固件待补字段**）
+
+PPG 情感检测接口 `/api/ppg_predict` 的 `sig` 训练口径是 `detrended_ir`
+（`raw_ir - dc_estimate_`，见 `captures/max30102_finger/*/README.md`），**不能用 `i6` 顶替**：
+
+> 用 2026-06-23 手指采集数据实测：把 `filtered_ir`（= `i6`）和 `detrended_ir`
+> 分别过服务端预处理（重采样 50Hz → 0.5–10Hz 带通 → 30s 切窗 → 百分位 z-norm），
+> 两者相关度只有 **0.68**，平均相对偏差 **76%**；而 `raw_ir` 与 `detrended_ir`
+> 的相关度是 **0.987**。`i6` 在固件里已经多了一层平滑，再被服务端带通一次会双重滤波。
+
+因此本批报文需要补充下列字段（任选其一，按优先级消费）：
+
+| 字段 | 类型 | 优先级 | 说明 |
+|---|---|---|---|
+| `i5` | number[] | 1（最优） | 去趋势 IR，即 `detrended_ir`；别名 `detrended` / `detrended_ir` 亦可 |
+| `raw_ir` | number[] | 2 | MAX30102 原始 IR 通道值；别名 `rawir` / `raw` |
+| `avg_ir` | number[] | 3（配合 `raw_ir`） | IR 直流估计均值；别名 `avgir` / `avg`。**与 `raw_ir` 同时下发时**小程序按 `raw_ir - avg_ir` 复现固件去趋势（实测与固件 `detrended_ir` 相关度 0.9857）；只下发 `raw_ir` 时小程序本地做 EMA 去直流（相关度 0.9982） |
+
+三个数组的长度需与 `i6` 一致，共用 `ts_ms_end` / `dt_ms` 还原同一套时间戳。
+未下发任何一路时，首页「状态识别」会直接提示缺字段，不会静默拿 `i6` 兜底。
 
 ### 4.6 `passive_resp_window` — 被动呼吸窗口
 
@@ -250,5 +271,6 @@
 | `start_active_test` 命令名 | ⚠️ 小程序侧推断，需固件确认 |
 | `device_state` 完整取值集合 | 代码仅消费上述 3 个值，其余按未知状态处理 |
 | `passive_ppg_batch` 无 `msg_type` 时依赖字段启发式 | 建议固件显式携带 `msg_type` |
+| `active_realtime_batch` 缺 `i5` / `raw_ir` | ⚠️ 情感检测需要 `detrended_ir`，见 4.5.1；未补充前首页「状态识别」会提示缺字段 |
 | MTU / 长 JSON 分包 | 小程序未协商 MTU；若单条 JSON 超过默认 MTU，需固件侧分包或双方协商 |
 | `calibration_status` 与 `resp_debug` 字段差异 | 小程序同函数处理，字段全集以固件为准 |

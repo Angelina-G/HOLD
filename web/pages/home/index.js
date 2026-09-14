@@ -1,11 +1,20 @@
 const holdBleRuntime = require('../../utils/hold-ble-runtime');
+const ppgPredict = require('../../utils/ppg-predict');
 
 const BREATH_GUIDE_STATE = 'BREATH_GUIDE_SESSION';
 const ACTIVE_TEST_STATE = 'FINGER_PPG_ACTIVE_TEST';
 const ACTIVE_TEST_TARGET_SECONDS = 60;
+/** 检测结束后等待窗口元数据到齐的兜底时长，超时就不再自动识别 */
+const EMOTION_ARM_WINDOW_MS = 3 * 60 * 1000;
 
 function formatCount(value) {
   return value === 0 || value ? `${value}` : '--';
+}
+
+function formatClock(date) {
+  const hours = `${date.getHours()}`.padStart(2, '0');
+  const minutes = `${date.getMinutes()}`.padStart(2, '0');
+  return `${hours}:${minutes}`;
 }
 
 function resolveLatestReportId(latestMeasurement, latestActiveWindow) {
@@ -79,6 +88,16 @@ Page({
     hasLatestReport: false,
     latestReport: null,
 
+    emotionStatus: 'idle',
+    emotionLabel: '',
+    emotionLabelId: 0,
+    emotionConfidence: '',
+    emotionBars: [],
+    emotionSegments: [],
+    emotionMeta: '',
+    emotionError: '',
+    emotionUpdatedAt: '',
+
     chartWidth: 320,
     chartHeight: 110
   },
@@ -91,6 +110,12 @@ Page({
       chartWidth: Math.max(280, Math.floor(systemInfo.windowWidth - 88)),
       chartHeight: 110
     });
+
+    this.wasActiveTestRunning = false;
+    this.emotionArmedUntilTs = 0;
+    this.lastEmotionMeasurementId = '';
+    this.lastEmotionMeasurement = null;
+    this.emotionRequesting = false;
 
     this.unsubscribeRuntime = holdBleRuntime.subscribe((state) => {
       this.applyRuntimeState(state);
@@ -176,8 +201,103 @@ Page({
     });
 
     this.latestReportId = resolveLatestReportId(latestMeasurement, state.latestActiveWindow);
+    this.trackEmotionPredict(activeTestRunning, latestMeasurement);
     this.ensureProgressTimer(activeTestRunning);
     this.scheduleChartDraw();
+  },
+
+  /**
+   * 主动检测结束后自动调用一次情感识别。
+   * 只在本次会话真的跑过检测后才触发，避免进入页面时被历史记录误触发。
+   */
+  trackEmotionPredict(activeTestRunning, latestMeasurement) {
+    if (activeTestRunning && !this.wasActiveTestRunning) {
+      this.wasActiveTestRunning = true;
+      this.emotionArmedUntilTs = Date.now() + EMOTION_ARM_WINDOW_MS;
+      this.lastEmotionMeasurementId = '';
+      this.lastEmotionMeasurement = null;
+      this.setData({
+        emotionStatus: 'idle',
+        emotionLabel: '',
+        emotionLabelId: 0,
+        emotionConfidence: '',
+        emotionBars: [],
+        emotionSegments: [],
+        emotionMeta: '',
+        emotionError: '',
+        emotionUpdatedAt: ''
+      });
+      return;
+    }
+
+    if (!activeTestRunning) {
+      this.wasActiveTestRunning = false;
+    }
+
+    if (activeTestRunning || this.emotionRequesting) {
+      return;
+    }
+    if (!latestMeasurement || latestMeasurement.isPartial) {
+      return;
+    }
+    if (latestMeasurement.id === this.lastEmotionMeasurementId) {
+      return;
+    }
+    if (Date.now() > this.emotionArmedUntilTs) {
+      return;
+    }
+
+    this.lastEmotionMeasurementId = latestMeasurement.id;
+    this.lastEmotionMeasurement = latestMeasurement;
+    this.emotionArmedUntilTs = 0;
+    this.runEmotionPredict(latestMeasurement);
+  },
+
+  runEmotionPredict(measurement) {
+    if (!measurement) {
+      return Promise.resolve();
+    }
+
+    this.emotionRequesting = true;
+    this.setData({
+      emotionStatus: 'loading',
+      emotionError: '',
+      emotionLabel: '',
+      emotionBars: [],
+      emotionSegments: [],
+      emotionMeta: '正在上传波形并识别…'
+    });
+
+    return ppgPredict.predictFromMeasurement(measurement)
+      .then((result) => {
+        this.setData({
+          emotionStatus: 'done',
+          emotionLabel: result.label,
+          emotionLabelId: result.labelId,
+          emotionConfidence: result.confidenceText,
+          emotionBars: result.bars,
+          emotionSegments: result.segments,
+          emotionMeta: result.metaText,
+          emotionUpdatedAt: formatClock(new Date())
+        });
+      })
+      .catch((error) => {
+        this.setData({
+          emotionStatus: 'error',
+          emotionError: error && error.message ? error.message : '识别失败，请重试',
+          emotionMeta: ''
+        });
+      })
+      .then(() => {
+        this.emotionRequesting = false;
+      });
+  },
+
+  retryEmotionPredict() {
+    if (this.emotionRequesting) {
+      return;
+    }
+    this.runEmotionPredict(this.lastEmotionMeasurement);
   },
 
   ensureProgressTimer(running) {

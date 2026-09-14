@@ -109,7 +109,8 @@
     <view class="status-row"><text class="label">系统</text><text class="value">{{envInfo.system}}</text></view>
     <view class="status-row"><text class="label">机型</text><text class="value">{{envInfo.brand}} / {{envInfo.platform}}</text></view>
     <view class="status-row"><text class="label">系统蓝牙</text><text class="value">{{envInfo.bluetoothEnabled}}</text></view>
-    <view class="status-row"><text class="label">本地存储</text><text class="value">{{storageUsageText}}</text></view>
+    <view class="status-row"><text class="label">云端存储</text><text class="value">{{storageUsageText}}</text></view>
+    <view class="status-row"><text class="label">登录状态</text><text class="value">{{accountText}}</text></view>
   </view>
 
   <view class="app-card">

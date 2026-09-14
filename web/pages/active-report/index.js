@@ -440,6 +440,12 @@ Page({
       chartHeight: 180,
       reportFeedback: ''
     });
+
+    if (reportId && typeof holdBleRuntime.ensureMeasurementWaves === 'function') {
+      // 归档列表只带摘要，波形按需从云端补拉
+      holdBleRuntime.ensureMeasurementWaves(reportId);
+    }
+
     this.unsubscribeRuntime = holdBleRuntime.subscribe((state) => {
       if (state.currentDeviceState === ACTIVE_TEST_STATE) {
         this.hasSeenActiveSession = true;
