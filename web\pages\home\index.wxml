@@ -1,0 +1,106 @@
+<view class="home-page">
+  <view class="home-hero">
+    <view class="hero-title">用户主页</view>
+    <view class="hero-subtitle">连接、校准和关键引导信息都收敛在首页显眼位置，调试页只做诊断查看。</view>
+
+    <view class="hero-actions">
+      <button class="solid-button" bindtap="handleScanAndConnect" loading="{{scanning}}">扫描并连接</button>
+      <button class="ghost-button" bindtap="disconnectDevice" disabled="{{!connected}}">断开连接</button>
+    </view>
+
+    <view class="hero-actions">
+      <button class="soft-button" bindtap="clearDebugCache">清除缓存</button>
+      <button class="accent-button" bindtap="toggleBreathGuide" disabled="{{!canSendCommand}}">
+        {{breathRunning ? '停止引导' : '开启引导'}}
+      </button>
+    </view>
+
+    <view class="status-grid">
+      <view class="hero-chip">
+        <text class="chip-label">设备</text>
+        <text class="chip-value">{{deviceName}}</text>
+      </view>
+      <view class="hero-chip">
+        <text class="chip-label">适配器</text>
+        <text class="chip-value">{{adapterStatus}}</text>
+      </view>
+      <view class="hero-chip">
+        <text class="chip-label">连接</text>
+        <text class="chip-value">{{connectionStatus}}</text>
+      </view>
+    </view>
+  </view>
+
+  <view class="module-card guidance-card">
+    <view class="module-tag warm">校准与引导</view>
+    <view class="module-title">{{guideTitle}}</view>
+    <view class="guide-copy">{{guideText}}</view>
+    <view class="guide-hint">{{primaryHint}}</view>
+    <view class="mode-panel">
+      <text class="mode-label">引导模式</text>
+      <picker mode="selector" range="{{breathModeOptions}}" bindchange="onBreathModeChange" disabled="{{breathRunning}}">
+        <view class="mode-picker">{{breathModeText}}</view>
+      </picker>
+      <text class="mode-status">{{breathRemainingText}}</text>
+    </view>
+    <button class="solid-button wide" bindtap="startCalibration" disabled="{{!canSendCommand || calibrationRunning}}">
+      {{calibrationRunning ? '校准中...' : '开始基础校准'}}
+    </button>
+  </view>
+
+  <view class="module-card">
+    <view class="module-header">
+      <view>
+        <view class="module-tag">实时指标</view>
+        <view class="module-title">当前设备上报</view>
+      </view>
+      <view class="module-action" bindtap="openDebugPage">调试页</view>
+    </view>
+
+    <view class="analysis-grid">
+      <view class="analysis-stat breathing">
+        <text class="analysis-number">{{respirationBpm === '' ? '--' : respirationBpm}}</text>
+        <text class="analysis-unit">次/分</text>
+        <text class="analysis-label">呼吸 bpm</text>
+      </view>
+      <view class="analysis-stat heartbeat">
+        <text class="analysis-number">{{heartRateBpm === '' ? '--' : heartRateBpm}}</text>
+        <text class="analysis-unit">bpm</text>
+        <text class="analysis-label">心率 bpm</text>
+      </view>
+      <view class="analysis-stat stability">
+        <text class="analysis-number">{{pressureRaw === '' ? '--' : pressureRaw}}</text>
+        <text class="analysis-label">压力 raw</text>
+      </view>
+      <view class="analysis-stat neutral">
+        <text class="analysis-number small">{{ppgIr === '' ? '--' : ppgIr}}</text>
+        <text class="analysis-label">PPG IR</text>
+      </view>
+      <view class="analysis-stat neutral">
+        <text class="analysis-number small">{{bodyTempC === '' ? '--' : bodyTempC}}</text>
+        <text class="analysis-label">体表温度 / ℃</text>
+      </view>
+      <view class="analysis-stat neutral">
+        <text class="analysis-number">{{debugLogCount}}</text>
+        <text class="analysis-label">收到包数</text>
+      </view>
+    </view>
+  </view>
+
+  <view class="module-card">
+    <view class="module-tag">诊断快照</view>
+    <view class="status-row"><text class="label">数据状态</text><text class="value">{{dataState}}</text></view>
+    <view class="status-row"><text class="label">信号质量</text><text class="value">{{signalQuality}}</text></view>
+    <view class="status-row"><text class="label">佩戴 / 接触</text><text class="value">{{wearState}} / {{contactState}}</text></view>
+    <view class="status-row"><text class="label">云端闭环</text><text class="value">{{cloudStatus}}</text></view>
+    <view class="status-row"><text class="label">最近更新</text><text class="value">{{lastUpdateText}}</text></view>
+    <view class="status-row"><text class="label">最近包类型</text><text class="value">{{packetType}} {{packetSource}}</text></view>
+    <view class="status-row"><text class="label">震动驱动</text><text class="value">{{hapticReady ? 'DRV2605L 就绪' : '未确认'}}</text></view>
+    <view class="status-row"><text class="label">压力原始值</text><text class="value">{{pressureRaw === '' ? '--' : pressureRaw}} / Δ{{pressureDelta === '' ? '--' : pressureDelta}}</text></view>
+    <view class="status-row"><text class="label">PPG 红光</text><text class="value">{{ppgRed === '' ? '--' : ppgRed}}</text></view>
+    <view class="status-row"><text class="label">阶段 / 传感器</text><text class="value">{{phaseAxis || '--'}}</text></view>
+    <view class="status-row"><text class="label">motion / beat</text><text class="value">{{motion || '--'}} / {{beatCount}}</text></view>
+    <view class="raw-block">{{lastRaw}}</view>
+    <view class="raw-block subdued">{{lastHex}}</view>
+  </view>
+</view>
